@@ -1,13 +1,17 @@
 {
-  "name": "maxblack-ultra-bot",
-  "version": "2.0.0",
+  "name": "ultra-bot-system",
+  "version": "1.0.0",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "telegraf": "^4.16.3",
-    "bedrock-protocol": "^4.10.0",
-    "edit-json-file": "^1.7.0"
+    "bedrock-protocol": "latest",
+    "edit-json-file": "latest"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
