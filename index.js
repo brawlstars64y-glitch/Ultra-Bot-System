@@ -20,7 +20,7 @@ const CHANNELS = [
     { id: '@minecrafmodss12', link: 'https://t.me/minecrafmodss12' },
     { id: '@aternosbot24', link: 'https://t.me/aternosbot24' }
 ];
-const DEVELOPER_LINK = 'https://t.me/uuuaaw';
+const DEVELOPER_LINK = 'https://t.me/uuuaaw'; // حسابك يا بطل
 
 let activeClients = {};
 
@@ -31,11 +31,22 @@ async function checkAllSubscriptions(ctx) {
             const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
             const status = ['member', 'administrator', 'creator'];
             if (!status.includes(member.status)) return false;
-        } catch (e) { return false; }
+        } catch (e) {
+            console.log(`خطأ فحص القناة ${channel.id}: تأكد من رتبة البوت.`);
+            return false;
+        }
     }
     return true;
 }
 
+// ⌨️ أزرار الاشتراك
+const subButtons = Markup.inlineKeyboard([
+    [Markup.button.url('📢 القناة الأولى (Minecraft)', CHANNELS[0].link)],
+    [Markup.button.url('📢 القناة الثانية (Updates)', CHANNELS[1].link)],
+    [Markup.button.callback('✅ تم الاشتراك في القناتين', 'main_menu')]
+]);
+
+// 🎮 أزرار القائمة الرئيسية (تم إضافة زر المطور)
 const mainButtons = (ctx) => Markup.inlineKeyboard([
     [Markup.button.callback('🎮 سـيـرفـراتـي المـحـفـوظـة', 'my_servers')],
     [Markup.button.callback('➕ إضـافـة سـيـرفـر جـديـد', 'add_server')],
@@ -43,85 +54,96 @@ const mainButtons = (ctx) => Markup.inlineKeyboard([
     [Markup.button.url('👨‍💻 المـطـور (الدعم الفني)', DEVELOPER_LINK)]
 ]);
 
+// 🚀 الأوامر الأساسية
 tgBot.start(async (ctx) => {
-    if (await checkAllSubscriptions(ctx)) {
-        ctx.replyWithMarkdown(`👋 *أهلاً بك يا بطل في نظام MaxBlack*`, mainButtons(ctx));
+    const isSubbed = await checkAllSubscriptions(ctx);
+    if (isSubbed) {
+        ctx.replyWithMarkdown(`👋 *أهلاً بك يا بطل في نظام MaxBlack*\n🚀 *سيرفراتك محمية بخصوصية تامة*`, mainButtons(ctx));
     } else {
-        ctx.reply('⚠️ *يجب الاشتراك في القنوات أولاً:*', Markup.inlineKeyboard([
-            [Markup.button.url('📢 القناة الأولى', CHANNELS[0].link)],
-            [Markup.button.url('📢 القناة الثانية', CHANNELS[1].link)],
-            [Markup.button.callback('✅ تم الاشتراك', 'main_menu')]
-        ]));
+        ctx.reply('⚠️ *عذراً عزيزي، يجب عليك الاشتراك في القناتين أدناه لتتمكن من استخدام البوت:*', subButtons);
     }
 });
 
-// --- نظام السيرفرات المتعددة (الحد الأقصى 3) ---
+tgBot.action('main_menu', async (ctx) => {
+    if (await checkAllSubscriptions(ctx)) {
+        ctx.editMessageText('🔮 *قـائـمـة الـتـحـكـم الـرئـيـسـيـة:*', { parse_mode: 'Markdown', ...mainButtons(ctx) });
+    } else {
+        ctx.answerCbQuery('❌ لم تشترك في كلتا القناتين بعد!', { show_alert: true });
+    }
+});
+
 tgBot.action('my_servers', async (ctx) => {
+    if (!(await checkAllSubscriptions(ctx))) return;
     const userId = ctx.from.id;
-    const servers = db.get(`${userId}.servers`) || [];
+    const h = db.get(`${userId}.host`);
+    const p = db.get(`${userId}.port`);
+    const name = db.get(`${userId}.bot_name`) || "MaxBlack";
     
-    if (servers.length === 0) return ctx.answerCbQuery("❌ ليس لديك سيرفرات محفوظة!", { show_alert: true });
+    if (!h) return ctx.answerCbQuery("❌ أضف سيرفراً أولاً!", { show_alert: true });
 
-    let keyboard = servers.map((s, index) => [Markup.button.callback(`${index + 1}. 🌐 ${s.host}:${s.port}`, `manage_srv_${index}`)]);
-    keyboard.push([Markup.button.callback('🔙 رجوع', 'main_menu')]);
+    const panel = `
+📊 *تـفـاصـيـل سـيـرفـرك الـخـاص:*
+━━━━━━━━━━━━━━
+🌐 *الـعـنـوان:* \`${h}\`
+🔌 *الـبـورت:* \`${p}\`
+🤖 *اسـم البـوت:* \`${name}\`
+🎮 *الإصـدار:* \`1.21.130\`
+━━━━━━━━━━━━━━`;
 
-    ctx.editMessageText('🎮 *قائمة سيرفراتك المحفوظة (أقصى عدد 3):*', {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard(keyboard)
-    });
-});
-
-tgBot.action('add_server', async (ctx) => {
-    const userId = ctx.from.id;
-    const servers = db.get(`${userId}.servers`) || [];
-    
-    if (servers.length >= 3) {
-        return ctx.answerCbQuery("⚠️ وصلت للحد الأقصى (3 سيرفرات)!", { show_alert: true });
-    }
-    ctx.reply('📥 *أرسل بيانات السيرفر بصيغة (IP:PORT):*');
-    db.set(`${userId}.state`, 'waiting_srv');
-});
-
-tgBot.on('text', async (ctx) => {
-    const userId = ctx.from.id;
-    const msg = ctx.message.text;
-    const state = db.get(`${userId}.state`);
-
-    if (state === 'waiting_srv' && msg.includes(':')) {
-        const [h, p] = msg.split(':');
-        let servers = db.get(`${userId}.servers`) || [];
-        servers.push({ host: h, port: p, bot_name: "MaxBlack" });
-        db.set(`${userId}.servers`, servers);
-        db.set(`${userId}.state`, null);
-        ctx.reply('✅ *تمت إضافة السيرفر رقم ' + servers.length + ' بنجاح!*');
-    }
-});
-
-// إدارة سيرفر محدد
-tgBot.action(/^manage_srv_(\d+)$/, async (ctx) => {
-    const index = ctx.match[1];
-    const userId = ctx.from.id;
-    const s = db.get(`${userId}.servers`)[index];
-
-    const panel = `📊 *تحكم بالسيرفر رقم ${parseInt(index)+1}:*\n🌐 *العنوان:* \`${s.host}:${s.port}\`\n🤖 *الاسم:* \`${s.bot_name}\``;
-    
     ctx.editMessageText(panel, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-            [Markup.button.callback('▶️ تشغيل', `start_srv_${index}`), Markup.button.callback('🛑 إيقاف', `stop_srv_${index}`)],
-            [Markup.button.callback('🗑️ حذف السيرفر', `del_srv_${index}`)],
-            [Markup.button.callback('🔙 رجوع للقائمة', 'my_servers')]
+            [Markup.button.callback('▶️ تـشـغـيـل', 'start_bot'), Markup.button.callback('🛑 إيـقـاف', 'stop_bot')],
+            [Markup.button.callback('🗑️ حـذف', 'delete_server'), Markup.button.callback('🔙 رجـوع', 'main_menu')]
         ])
     });
 });
 
-tgBot.action(/^del_srv_(\d+)$/, (ctx) => {
-    const index = ctx.match[1];
-    let servers = db.get(`${ctx.from.id}.servers`);
-    servers.splice(index, 1);
-    db.set(`${ctx.from.id}.servers`, servers);
-    ctx.answerCbQuery("🗑️ تم الحذف");
-    ctx.editMessageText("✅ تم حذف السيرفر.", Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'my_servers')]]));
+tgBot.on('text', async (ctx) => {
+    if (!(await checkAllSubscriptions(ctx))) return;
+    const userId = ctx.from.id;
+    const msg = ctx.message.text;
+
+    if (msg.includes(':')) {
+        const [h, p] = msg.split(':');
+        db.set(`${userId}.host`, h); db.set(`${userId}.port`, p);
+        ctx.reply('✅ *تم حفظ بياناتك الخاصة بنجاح!*');
+    } else if (!msg.startsWith('/')) {
+        db.set(`${userId}.bot_name`, msg);
+        ctx.reply(`✅ *تم تغيير اسم بوتك الخاص إلى:* ${msg}`);
+    }
 });
 
-tgBot.launch({ polling: { dropPendingUpdates: true } });
+tgBot.action('settings', (ctx) => {
+    ctx.editMessageText('⚙️ *الإعدادات:*', Markup.inlineKeyboard([
+        [Markup.button.callback('🤖 تغيير الاسم', 'change_name')],
+        [Markup.button.callback('🔙 رجوع', 'main_menu')]
+    ]));
+});
+
+tgBot.action('add_server', (ctx) => ctx.reply('📥 *أرسل البيانات (IP:PORT):*'));
+tgBot.action('change_name', (ctx) => ctx.reply('📝 *أرسل اسم البوت الجديد:*'));
+
+tgBot.action('start_bot', async (ctx) => {
+    const userId = ctx.from.id;
+    const h = db.get(`${userId}.host`); const p = db.get(`${userId}.port`);
+    const name = db.get(`${userId}.bot_name`) || "MaxBlack";
+    ctx.reply(`⏳ *جاري تشغيل بوتك [ ${name} ]...*`);
+    if (activeClients[userId]) try { activeClients[userId].close(); } catch (e) {}
+    activeClients[userId] = bedrock.createClient({ host: h, port: parseInt(p), username: name, offline: true, version: '1.21.130' });
+    activeClients[userId].on('spawn', () => ctx.reply(`✅ *بوتك متصل الآن بنجاح!*`));
+});
+
+tgBot.action('stop_bot', (ctx) => {
+    const userId = ctx.from.id;
+    if (activeClients[userId]) { activeClients[userId].close(); delete activeClients[userId]; ctx.reply('🛑 *تم الإيقاف.*'); }
+});
+
+tgBot.action('delete_server', (ctx) => {
+    db.unset(`${ctx.from.id}.host`); db.unset(`${ctx.from.id}.port`);
+    ctx.reply('🗑️ *تم الحذف بنجاح.*');
+});
+
+// 🚀 تشغيل البوت مع تنظيف التحديثات القديمة
+tgBot.launch({ polling: { dropPendingUpdates: true } })
+    .then(() => console.log('🚀 نظام MaxBlack يعمل الآن بصيغة البطل!'));
