@@ -1,52 +1,133 @@
 const { Telegraf, Markup } = require('telegraf');
-const http = require('http');
+const bedrock = require('bedrock-protocol');
+const editJsonFile = require("edit-json-file");
 
-// 🛡️ جلب التوكن من Variables
-const token = process.env.BOT_TOKEN;
-if (!token) {
-  console.error("❌ خطأ: لم يتم العثور على BOT_TOKEN!");
-  process.exit(1);
+let db = editJsonFile(`${__dirname}/database.json`, { autosave: true });
+const tgBot = new Telegraf('8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU');
+
+// إعداد القنوات
+const CHANNELS = [
+    { id: '@minecrafmodss12', link: 'https://t.me/minecrafmodss12' },
+    { id: '@aternosbot24', link: 'https://t.me/aternosbot24' }
+];
+
+let activeClients = {};
+
+// دالة فحص الاشتراك في القناتين
+async function checkAllSubscriptions(ctx) {
+    for (const channel of CHANNELS) {
+        try {
+            const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
+            const status = ['member', 'administrator', 'creator'];
+            if (!status.includes(member.status)) return false;
+        } catch (e) {
+            console.log(`خطأ فحص القناة ${channel.id}: ربما البوت ليس مسؤولاً.`);
+            return false;
+        }
+    }
+    return true;
 }
 
-const bot = new Telegraf(token);
+// أزرار الاشتراك المزدوج
+const subButtons = Markup.inlineKeyboard([
+    [Markup.button.url('📢 القناة الأولى (Minecraft)', CHANNELS[0].link)],
+    [Markup.button.url('📢 القناة الثانية (Updates)', CHANNELS[1].link)],
+    [Markup.button.callback('✅ تم الاشتراك في القناتين', 'main_menu')]
+]);
 
-// 🌐 سيرفر Railway لضمان العمل 24 ساعة
-http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.write("💎 نظام الأسطورة يعمل بأعلى كفاءة");
-  res.end();
-}).listen(process.env.PORT || 3000);
+const mainButtons = (ctx) => Markup.inlineKeyboard([
+    [Markup.button.callback('🎮 سـيـرفـراتـي المـحـفـوظـة', 'my_servers')],
+    [Markup.button.callback('➕ إضـافـة سـيـرفـر جـديـد', 'add_server')],
+    [Markup.button.callback('⚙️ إعـدادات الـنـظـام', 'settings')]
+]);
 
-// ✨ واجهة الترحيب الأسطورية (صيغة المذكر)
-bot.start((ctx) => {
-  const message = `
-🚀 **أهلاً بك يا بطل في نظامك الخاص!**
-
-تم تفعيل الواجهة الأسطورية بنجاح. هذا البوت يعمل الآن تحت إشرافك وبحماية كاملة من سيرفر Railway 🛡️.
-
-✨ **ماذا تريد أن نفعل الآن؟**
-  `;
-  
-  ctx.replyWithMarkdown(message, 
-    Markup.inlineKeyboard([
-      [Markup.button.callback('📊 حالة النظام', 'check_status'), Markup.button.callback('🛡️ الحماية', 'check_protect')],
-      [Markup.button.url('✨ قناتي الخاصة', 'https://t.me/YourChannel')] 
-    ])
-  );
+// الأوامر الأساسية
+tgBot.start(async (ctx) => {
+    const isSubbed = await checkAllSubscriptions(ctx);
+    if (isSubbed) {
+        ctx.replyWithMarkdownV2(`👋 *أهلاً بك يا بطل في نظام MaxBlack*\n🚀 *سيرفراتك محمية بخصوصية تامة*`, mainButtons(ctx));
+    } else {
+        ctx.reply('⚠️ *عذراً عزيزي، يجب عليك الاشتراك في القناتين أدناه لتتمكن من استخدام البوت:*', { parse_mode: 'MarkdownV2', ...subButtons });
+    }
 });
 
-// تفعيلات الأزرار الشفافة
-bot.action('check_status', (ctx) => {
-  ctx.answerCbQuery();
-  ctx.reply('📊 النظام مستقر ويعمل بأعلى سرعة من أجلك يا بطل ✅');
+tgBot.action('main_menu', async (ctx) => {
+    if (await checkAllSubscriptions(ctx)) {
+        ctx.editMessageText('🔮 *قـائـمـة الـتـحـكـم الـرئـيـسـيـة:*', { parse_mode: 'MarkdownV2', ...mainButtons(ctx) });
+    } else {
+        ctx.answerCbQuery('❌ لم تشترك في كلتا القناتين بعد!', { show_alert: true });
+    }
 });
 
-bot.action('check_protect', (ctx) => {
-  ctx.answerCbQuery();
-  ctx.reply('🛡️ حماية "الأسطورة" مفعلة.. بياناتك في أمان مطلق!');
+tgBot.action('my_servers', async (ctx) => {
+    if (!(await checkAllSubscriptions(ctx))) return;
+    const userId = ctx.from.id;
+    const h = db.get(`${userId}.host`);
+    const p = db.get(`${userId}.port`);
+    const name = db.get(`${userId}.bot_name`) || "MaxBlack";
+    
+    if (!h) return ctx.answerCbQuery("❌ أضف سيرفراً أولاً!", { show_alert: true });
+
+    const panel = `
+📊 *تـفـاصـيـل سـيـرفـرك الـخـاص:*
+━━━━━━━━━━━━━━
+🌐 *الـعـنـوان:* \`${h}\`
+🔌 *الـبـورت:* \`${p}\`
+🤖 *اسـم البـوت:* \`${name}\`
+🎮 *الإصـدار:* \`1.21.130\`
+━━━━━━━━━━━━━━`;
+
+    ctx.editMessageText(panel, {
+        parse_mode: 'MarkdownV2',
+        ...Markup.inlineKeyboard([
+            [Markup.button.callback('▶️ تـشـغـيـل', 'start_bot'), Markup.button.callback('🛑 إيـقـاف', 'stop_bot')],
+            [Markup.button.callback('🗑️ حـذف', 'delete_server'), Markup.button.callback('🔙 رجـوع', 'main_menu')]
+        ])
+    });
 });
 
-// تشغيل المحرك
-bot.launch({ polling: { dropPendingUpdates: true } })
-  .then(() => console.log("🚀 تم إطلاق الواجهة الأسطورية بنجاح!"))
-  .catch((err) => console.error("❌ عطل:", err));
+tgBot.on('text', async (ctx) => {
+    if (!(await checkAllSubscriptions(ctx))) return;
+    const userId = ctx.from.id;
+    const msg = ctx.message.text;
+
+    if (msg.includes(':')) {
+        const [h, p] = msg.split(':');
+        db.set(`${userId}.host`, h); db.set(`${userId}.port`, p);
+        ctx.reply('✅ *تم حفظ بياناتك الخاصة بنجاح!*');
+    } else if (!msg.startsWith('/')) {
+        db.set(`${userId}.bot_name`, msg);
+        ctx.reply(`✅ *تم تغيير اسم بوتك الخاص إلى:* ${msg}`);
+    }
+});
+
+// ميزات التشغيل والإعدادات (نفس الكود السابق مع userId)
+tgBot.action('settings', (ctx) => {
+    ctx.editMessageText('⚙️ *الإعدادات:*', Markup.inlineKeyboard([[Markup.button.callback('🤖 تغيير الاسم', 'change_name')], [Markup.button.callback('🔙 رجوع', 'main_menu')]]));
+});
+
+tgBot.action('add_server', (ctx) => ctx.reply('📥 *أرسل البيانات (IP:PORT):*'));
+tgBot.action('change_name', (ctx) => ctx.reply('📝 *أرسل اسم البوت الجديد:*'));
+
+tgBot.action('start_bot', async (ctx) => {
+    const userId = ctx.from.id;
+    const h = db.get(`${userId}.host`); const p = db.get(`${userId}.port`);
+    const name = db.get(`${userId}.bot_name`) || "MaxBlack";
+    ctx.reply(`⏳ *جاري تشغيل بوتك [ ${name} ]...*`);
+    if (activeClients[userId]) try { activeClients[userId].close(); } catch (e) {}
+    activeClients[userId] = bedrock.createClient({ host: h, port: parseInt(p), username: name, offline: true, version: '1.21.130' });
+    activeClients[userId].on('spawn', () => ctx.reply(`✅ *بوتك متصل الآن بنجاح!*`));
+});
+
+tgBot.action('stop_bot', (ctx) => {
+    const userId = ctx.from.id;
+    if (activeClients[userId]) { activeClients[userId].close(); delete activeClients[userId]; ctx.reply('🛑 *تم الإيقاف.*'); }
+});
+
+tgBot.action('delete_server', (ctx) => {
+    db.unset(`${ctx.from.id}.host`); db.unset(`${ctx.from.id}.port`);
+    ctx.reply('🗑️ *تم الحذف.*');
+});
+
+tgBot.launch();
+console.log('🚀 نظام الاشتراك المزدوج والخصوصية يعمل الآن...');
