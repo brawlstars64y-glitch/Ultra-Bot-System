@@ -1,288 +1,45 @@
 const { Telegraf, Markup, session } = require('telegraf')
 const bedrock = require('bedrock-protocol')
 const http = require('http')
-const net = require('net')
 
 /* Railway Keep Alive */
-const server = http.createServer((req, res) => {
-  console.log('✅ Ping received from Railway')
-  res.writeHead(200, { 'Content-Type': 'text/plain' })
-  res.end('MaxBlack Bot is Online')
-})
-
-server.listen(process.env.PORT || 3000, () => {
-  console.log(`✅ Keep-alive server running on port ${process.env.PORT || 3000}`)
-})
-
-/* إدارة الذاكرة */
-let restartAttempts = 0
-const MAX_RESTART_ATTEMPTS = 5
+http.createServer((req, res) => res.end('OK')).listen(process.env.PORT || 3000)
 
 /* Telegram Bot */
 const bot = new Telegraf('8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU')
 
-/* 📢 قنوات الاشتراك الإجباري */
-const REQUIRED_CHANNELS = [
-  {
-    id: '@minecrafmodss12',
-    name: 'Minecraft Mods',
-    url: 'https://t.me/minecrafmodss12'
-  },
-  {
-    id: '@aternosbot24',
-    name: 'Aternos Bot',
-    url: 'https://t.me/aternosbot24'
-  }
-]
-
-/* ✅ تحسين الجلسات */
+// ✅ تحسين الجلسات لتخزين بيانات متعددة
 bot.use(session({
   getSessionKey: (ctx) => ctx.from && ctx.chat && `${ctx.from.id}:${ctx.chat.id}`,
   defaultSession: () => ({
-    servers: [],
+    servers: [], // تخزين عدة سيرفرات
     currentServer: null,
-    step: null,
-    action: null,
-    tempServer: {},
-    hasCheckedSubscription: false,
-    lastActivity: Date.now()
+    step: null
   })
 }))
 
 // متغيرات عامة
-let clients = new Map()
+let clients = new Map() // لتخزين اتصالات متعددة
 let afkIntervals = new Map()
-let cleanupInterval
-
-/* ✅ 1. تعريف الدوال الأساسية أولاً (قبل استخدامها) */
-
-/* 🔍 اختبار اتصال بالسيرفر */
-async function testServerConnection(host, port) {
-  return new Promise((resolve) => {
-    const socket = new net.Socket()
-    
-    socket.setTimeout(3000)
-    
-    socket.on('connect', () => {
-      console.log(`✅ ${host}:${port} - متصل`)
-      socket.destroy()
-      resolve({ success: true, message: '✅ السيرفر متاح للاتصال' })
-    })
-    
-    socket.on('timeout', () => {
-      console.log(`⏰ ${host}:${port} - انتهى الوقت`)
-      socket.destroy()
-      resolve({ 
-        success: false, 
-        message: '⏰ انتهى وقت الاتصال',
-        suggestion: 'تأكد من أن السيرفر يعمل'
-      })
-    })
-    
-    socket.on('error', (err) => {
-      console.log(`❌ ${host}:${port} - خطأ: ${err.message}`)
-      resolve({ 
-        success: false, 
-        message: `❌ خطأ: ${err.message}`,
-        suggestion: 'تأكد من IP و Port صحيحين'
-      })
-    })
-    
-    try {
-      socket.connect(port, host)
-    } catch (err) {
-      resolve({ 
-        success: false, 
-        message: `❌ خطأ في الاتصال: ${err.message}` 
-      })
-    }
-  })
-}
-
-/* ✅ التحقق من الاشتراك في القنوات */
-async function checkSubscription(ctx) {
-  try {
-    const userId = ctx.from.id
-    
-    for (const channel of REQUIRED_CHANNELS) {
-      try {
-        const chatMember = await ctx.telegram.getChatMember(channel.id, userId)
-        const isMember = ['member', 'administrator', 'creator'].includes(chatMember.status)
-        
-        if (!isMember) {
-          return {
-            success: false,
-            missingChannel: channel,
-            message: `⚠️ يجب الاشتراك في ${channel.name} أولاً`
-          }
-        }
-      } catch (error) {
-        console.error(`خطأ في التحقق من ${channel.name}:`, error)
-        return {
-          success: false,
-          missingChannel: channel,
-          message: `❌ لا يمكن التحقق من ${channel.name}`
-        }
-      }
-    }
-    
-    return { success: true }
-  } catch (error) {
-    console.error('خطأ في التحقق:', error)
-    return { success: false, message: '❌ حدث خطأ في التحقق' }
-  }
-}
-
-/* 🔥 وسيط للتحقق من الاشتراك */
-const requireSubscription = async (ctx, next) => {
-  try {
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      
-      if (!subscription.success) {
-        await ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**\n\n` +
-          `اضغط على زر التحقق بعد الاشتراك:`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-        return
-      }
-      
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    ctx.session.lastActivity = Date.now()
-    return next()
-  } catch (error) {
-    console.error('❌ خطأ في requireSubscription:', error)
-    ctx.reply('❌ حدث خطأ. حاول مرة أخرى.')
-  }
-}
-
-/* 🧹 تنظيف الاتصال */
-function cleanupConnection(serverKey) {
-  try {
-    if (afkIntervals.has(serverKey)) {
-      clearInterval(afkIntervals.get(serverKey))
-      afkIntervals.delete(serverKey)
-    }
-    
-    const connection = clients.get(serverKey)
-    if (connection && connection.timeout) {
-      clearTimeout(connection.timeout)
-    }
-    
-    clients.delete(serverKey)
-    console.log('🧹 تم تنظيف اتصال:', serverKey)
-  } catch (error) {
-    console.error('❌ خطأ في cleanupConnection:', error)
-  }
-}
-
-/* 🧹 تنظيف جميع الاتصالات */
-function cleanupAll() {
-  console.log('🛑 تنظيف جميع الاتصالات...')
-  
-  clients.forEach((connection, key) => {
-    try {
-      if (connection.client) {
-        connection.client.close()
-      }
-      if (connection.timeout) {
-        clearTimeout(connection.timeout)
-      }
-    } catch (error) {
-      console.error(`خطأ في تنظيف ${key}:`, error)
-    }
-    cleanupConnection(key)
-  })
-  
-  afkIntervals.forEach((interval, key) => {
-    clearInterval(interval)
-  })
-  afkIntervals.clear()
-}
-
-/* 🔄 وظيفة تنظيف الذاكرة التلقائية */
-function startCleanup() {
-  if (cleanupInterval) {
-    clearInterval(cleanupInterval)
-  }
-  
-  cleanupInterval = setInterval(() => {
-    try {
-      console.log('🧹 جاري تنظيف الذاكرة...')
-      
-      let cleaned = 0
-      clients.forEach((connection, key) => {
-        if (!connection.client || connection.client.ended || connection.client.destroyed) {
-          console.log(`🧹 تنظيف اتصال ميت: ${key}`)
-          cleanupConnection(key)
-          cleaned++
-        }
-      })
-      
-      if (cleaned > 0) {
-        console.log(`🧹 تم تنظيف ${cleaned} اتصال ميت`)
-      }
-      
-      if (restartAttempts > 0) {
-        setTimeout(() => {
-          restartAttempts = 0
-          console.log('🔄 إعادة تعيين محاولات إعادة التشغيل')
-        }, 3600000)
-      }
-      
-    } catch (error) {
-      console.error('❌ خطأ في التنظيف:', error)
-    }
-  }, 300000)
-}
-
-/* ✅ 2. تعريف القوائم */
 
 /* 🎮 القائمة الرئيسية */
 function mainMenu() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('➕ إضافة سيرفر', 'add_server')],
     [Markup.button.callback('📋 قائمة السيرفرات', 'list_servers')],
-    [Markup.button.callback('🗑️ حذف سيرفر', 'delete_server')],
     [Markup.button.callback('▶️ دخول', 'connect')],
     [Markup.button.callback('⏹️ خروج', 'disconnect')],
     [Markup.button.callback('⚙️ إعدادات AFK', 'afk_settings')],
-    [Markup.button.callback('🔧 إعدادات متقدمة', 'advanced_settings')],
-    [Markup.button.callback('📊 الحالة', 'status')],
-    [Markup.button.callback('🔄 إعادة تشغيل البوت', 'restart_bot')]
+    [Markup.button.callback('📊 الحالة', 'status')]
   ])
 }
 
 /* 🎮 قائمة السيرفرات */
-function serversMenu(servers, action = 'select') {
-  const buttons = servers.map((server, index) => [
-    Markup.button.callback(
-      `📌 ${server.name}`,
-      `${action}_${index}`
-    )
-  ])
+function serversMenu(servers) {
+  const buttons = servers.map((server, index) => 
+    [Markup.button.callback(`${server.name} - ${server.host}:${server.port}`, `select_${index}`)]
+  )
   buttons.push([Markup.button.callback('🔙 رجوع', 'back_to_main')])
-  return Markup.inlineKeyboard(buttons)
-}
-
-/* 🗑️ قائمة حذف السيرفرات */
-function deleteMenu(servers) {
-  const buttons = servers.map((server, index) => [
-    Markup.button.callback(
-      `❌ ${server.name}`,
-      `delete_${index}`
-    )
-  ])
-  buttons.push([
-    Markup.button.callback('🗑️ حذف الكل', 'delete_all'),
-    Markup.button.callback('🔙 رجوع', 'back_to_main')
-  ])
   return Markup.inlineKeyboard(buttons)
 }
 
@@ -294,875 +51,172 @@ function afkMenu() {
   ])
 }
 
-/* 📢 قائمة الاشتراك الإجباري */
-function subscriptionMenu() {
-  const buttons = REQUIRED_CHANNELS.map(channel => [
-    Markup.button.url(`✅ ${channel.name}`, channel.url)
-  ])
-  buttons.push([Markup.button.callback('🔃 تحقق من الاشتراك', 'check_subscription')])
-  return Markup.inlineKeyboard(buttons)
-}
-
-/* ✅ 3. معالجات البوت (Handlers) */
-
 /* 🚀 بدء البوت */
-bot.start(async (ctx) => {
-  try {
-    const subscription = await checkSubscription(ctx)
-    
-    if (!subscription.success) {
-      ctx.session.hasCheckedSubscription = false
-      return ctx.reply(
-        `📢 **اشتراك إجباري**\n\n` +
-        `يجب الاشتراك في:\n\n` +
-        `📌 ${REQUIRED_CHANNELS[0].name}\n` +
-        `📌 ${REQUIRED_CHANNELS[1].name}\n\n` +
-        `بعد الاشتراك اضغط: 🔃 تحقق`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: subscriptionMenu().reply_markup
-        }
-      )
-    }
-    
-    ctx.session.hasCheckedSubscription = true
-    ctx.session.lastActivity = Date.now()
-    
-    ctx.reply(
-      `🎮 **MaxBlack Bot - Railway Edition**\n\n` +
-      `✅ إصدار مستقر ومحسّن\n` +
-      `🧹 تنظيف ذاكرة تلقائي\n` +
-      `🚀 أداء محسّن\n\n` +
-      `اختر من القائمة:`,
-      { 
-        reply_markup: mainMenu().reply_markup 
-      }
-    )
-  } catch (error) {
-    console.error('❌ خطأ في start:', error)
-    ctx.reply('❌ حدث خطأ. حاول مرة أخرى.')
-  }
-})
-
-/* 🔃 تحقق من الاشتراك */
-bot.action('check_subscription', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    const subscription = await checkSubscription(ctx)
-    
-    if (!subscription.success) {
-      return ctx.reply(
-        `❌ **لم يتم الاشتراك بعد**\n\n` +
-        `يجب الاشتراك في:\n\n` +
-        `📌 ${REQUIRED_CHANNELS[0].name}\n` +
-        `📌 ${REQUIRED_CHANNELS[1].name}\n\n` +
-        `اضغط على الأزرار للاشتراك ثم اضغط تحقق`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: subscriptionMenu().reply_markup
-        }
-      )
-    }
-    
-    ctx.session.hasCheckedSubscription = true
-    ctx.session.lastActivity = Date.now()
-    
-    ctx.reply('✅ **تم التحقق بنجاح!**\n\nاختر من القائمة:', {
-      parse_mode: 'Markdown',
-      reply_markup: mainMenu().reply_markup
-    })
-  } catch (error) {
-    console.error('❌ خطأ في check_subscription:', error)
-  }
-})
-
-/* 🔧 إعدادات متقدمة */
-bot.action('advanced_settings', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    const subscription = await checkSubscription(ctx)
-    if (!subscription.success) {
-      ctx.session.hasCheckedSubscription = false
-      return ctx.reply(
-        `📢 **يجب الاشتراك أولاً**`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: subscriptionMenu().reply_markup
-        }
-      )
-    }
-    
-    ctx.session.hasCheckedSubscription = true
-    ctx.session.lastActivity = Date.now()
-    
-    ctx.reply(
-      `🔧 **الإعدادات المتقدمة - Railway**\n\n` +
-      `اختر خياراً:`,
-      {
-        reply_markup: Markup.inlineKeyboard([
-          [Markup.button.callback('🧹 تنظيف الذاكرة', 'cleanup_memory')],
-          [Markup.button.callback('📊 معلومات النظام', 'system_info')],
-          [Markup.button.callback('🔍 اختبار اتصال', 'test_connection')],
-          [Markup.button.callback('🔙 رجوع', 'back_to_main')]
-        ]).reply_markup
-      }
-    )
-  } catch (error) {
-    console.error('❌ خطأ في advanced_settings:', error)
-  }
-})
-
-/* 🧹 تنظيف الذاكرة */
-bot.action('cleanup_memory', async (ctx) => {
-  try {
-    await ctx.answerCbQuery('جاري التنظيف...')
-    
-    // التحقق من الاشتراك أولاً
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    let cleanedConnections = 0
-    let cleanedAFK = 0
-    
-    clients.forEach((connection, key) => {
-      if (!connection.client || connection.client.ended) {
-        cleanupConnection(key)
-        cleanedConnections++
-      }
-    })
-    
-    afkIntervals.forEach((interval, key) => {
-      if (!clients.has(key)) {
-        clearInterval(interval)
-        afkIntervals.delete(key)
-        cleanedAFK++
-      }
-    })
-    
-    ctx.reply(
-      `🧹 **تم تنظيف الذاكرة**\n\n` +
-      `🔗 اتصالات نظفت: ${cleanedConnections}\n` +
-      `⏱️ مؤقتات AFK نظفت: ${cleanedAFK}\n` +
-      `📦 إجمالي الذاكرة: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: mainMenu().reply_markup
-      }
-    )
-  } catch (error) {
-    console.error('❌ خطأ في cleanup_memory:', error)
-    ctx.reply('❌ حدث خطأ أثناء التنظيف.')
-  }
-})
-
-/* 📊 معلومات النظام */
-bot.action('system_info', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    const memoryUsage = process.memoryUsage()
-    const uptime = process.uptime()
-    const hours = Math.floor(uptime / 3600)
-    const minutes = Math.floor((uptime % 3600) / 60)
-    const seconds = Math.floor(uptime % 60)
-    
-    ctx.reply(
-      `📊 **معلومات النظام - Railway**\n\n` +
-      `⏰ وقت التشغيل: ${hours} س ${minutes} د ${seconds} ث\n` +
-      `🧠 استخدام الذاكرة:\n` +
-      `  • Heap: ${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB / ${Math.round(memoryUsage.heapTotal / 1024 / 1024)}MB\n` +
-      `  • RSS: ${Math.round(memoryUsage.rss / 1024 / 1024)}MB\n\n` +
-      `🔗 اتصالات نشطة: ${clients.size}\n` +
-      `⏱️ مؤقتات AFK: ${afkIntervals.size}\n` +
-      `🔄 محاولات إعادة تشغيل: ${restartAttempts}\n\n` +
-      `✅ الحالة: ${clients.size > 10 ? '⚠️ ثقيل' : '🟢 ممتاز'}`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: mainMenu().reply_markup
-      }
-    )
-  } catch (error) {
-    console.error('❌ خطأ في system_info:', error)
-  }
-})
-
-/* 🔍 اختبار اتصال */
-bot.action('test_connection', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    if (!ctx.session.currentServer) {
-      return ctx.reply('⚠️ اختر سيرفراً أولاً.')
-    }
-    
-    const server = ctx.session.currentServer
-    ctx.reply(`🔍 جاري اختبار ${server.host}:${server.port}...`)
-    
-    const result = await testServerConnection(server.host, server.port)
-    
-    ctx.reply(
-      `**نتيجة الاختبار:**\n\n` +
-      `📍 ${server.host}:${server.port}\n` +
-      `📡 ${result.message}\n\n` +
-      `${result.success ? '✅ جاهز للاتصال' : '❌ يحتاج إصلاح'}`,
-      { 
-        parse_mode: 'Markdown',
-        reply_markup: mainMenu().reply_markup 
-      }
-    )
-  } catch (error) {
-    console.error('❌ خطأ في test_connection:', error)
-  }
-})
-
-/* 🗑️ حذف سيرفر */
-bot.action('delete_server', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    if (!ctx.session.servers || ctx.session.servers.length === 0) {
-      return ctx.reply('⚠️ لا توجد سيرفرات لحذفها.', { 
-        reply_markup: mainMenu().reply_markup 
-      })
-    }
-    
-    ctx.reply('🗑️ اختر السيرفر الذي تريد حذفه:', {
-      reply_markup: deleteMenu(ctx.session.servers).reply_markup
-    })
-  } catch (error) {
-    console.error('❌ خطأ في delete_server:', error)
-  }
-})
-
-/* 🗑️ حذف سيرفر محدد */
-bot.action(/delete_(\d+)/, async (ctx) => {
-  try {
-    const index = parseInt(ctx.match[1])
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    if (!ctx.session.servers || !ctx.session.servers[index]) {
-      return ctx.reply('❌ السيرفر غير موجود')
-    }
-    
-    const deletedServer = ctx.session.servers[index]
-    const serverKey = `${deletedServer.host}:${deletedServer.port}`
-    
-    if (clients.has(serverKey)) {
-      const connection = clients.get(serverKey)
-      if (connection.client) {
-        connection.client.close()
-      }
-      cleanupConnection(serverKey)
-    }
-    
-    ctx.session.servers.splice(index, 1)
-    
-    if (ctx.session.currentServer && 
-        ctx.session.currentServer.host === deletedServer.host &&
-        ctx.session.currentServer.port === deletedServer.port) {
-      ctx.session.currentServer = null
-    }
-    
-    ctx.reply(`🗑️ تم حذف: ${deletedServer.name}\n📍 ${deletedServer.host}:${deletedServer.port}`, {
-      reply_markup: mainMenu().reply_markup
-    })
-  } catch (error) {
-    console.error('❌ خطأ في حذف السيرفر:', error)
-  }
-})
-
-/* 🗑️ حذف جميع السيرفرات */
-bot.action('delete_all', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    if (!ctx.session.servers || ctx.session.servers.length === 0) {
-      return ctx.reply('⚠️ لا توجد سيرفرات لحذفها.')
-    }
-    
-    const confirmKeyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('✅ نعم، احذف الكل', 'confirm_delete_all')],
-      [Markup.button.callback('❌ إلغاء', 'back_to_main')]
-    ])
-    
-    ctx.reply(`⚠️ **هل أنت متأكد من حذف جميع السيرفرات؟**`, {
-      parse_mode: 'Markdown',
-      reply_markup: confirmKeyboard.reply_markup
-    })
-  } catch (error) {
-    console.error('❌ خطأ في delete_all:', error)
-  }
-})
-
-/* ✅ تأكيد حذف الكل */
-bot.action('confirm_delete_all', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    const totalServers = ctx.session.servers ? ctx.session.servers.length : 0
-    
-    ctx.session.servers?.forEach(server => {
-      const serverKey = `${server.host}:${server.port}`
-      if (clients.has(serverKey)) {
-        const connection = clients.get(serverKey)
-        if (connection.client) {
-          connection.client.close()
-        }
-        cleanupConnection(serverKey)
-      }
-    })
-    
-    ctx.session.servers = []
-    ctx.session.currentServer = null
-    
-    ctx.reply(`🗑️ تم حذف جميع السيرفرات (${totalServers}) بنجاح!`, {
-      reply_markup: mainMenu().reply_markup
-    })
-  } catch (error) {
-    console.error('❌ خطأ في confirm_delete_all:', error)
-  }
-})
-
-/* ◀️ رجوع للقائمة */
-bot.action('back_to_main', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    ctx.session.step = null
-    ctx.session.action = null
-    ctx.session.lastActivity = Date.now()
-    
-    ctx.reply('🏠 القائمة الرئيسية:', {
-      reply_markup: mainMenu().reply_markup
-    })
-  } catch (error) {
-    console.error('❌ خطأ في back_to_main:', error)
-  }
-})
-
-/* 🔄 إعادة تشغيل البوت */
-bot.action('restart_bot', async (ctx) => {
-  try {
-    await ctx.answerCbQuery('جاري إعادة التشغيل...')
-    
-    if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
-      return ctx.reply(
-        `⚠️ **تم تجاوز الحد الأقصى لإعادة التشغيل**\n\n` +
-        `انتظر قليلاً ثم حاول مرة أخرى.`,
-        { parse_mode: 'Markdown' }
-      )
-    }
-    
-    restartAttempts++
-    
-    ctx.reply(
-      `🔄 **جاري إعادة تشغيل البوت...**\n\n` +
-      `سيتم:\n` +
-      `1. إغلاق جميع الاتصالات\n` +
-      `2. تنظيف الذاكرة\n` +
-      `3. إعادة التشغيل\n\n` +
-      `🔄 المحاولة: ${restartAttempts}/${MAX_RESTART_ATTEMPTS}`,
-      { parse_mode: 'Markdown' }
-    )
-    
-    let closedConnections = 0
-    clients.forEach((connection, key) => {
-      if (connection.client) {
-        try {
-          connection.client.close()
-          closedConnections++
-        } catch (error) {
-          console.error(`خطأ في إغلاق اتصال ${key}:`, error)
-        }
-      }
-      cleanupConnection(key)
-    })
-    
-    afkIntervals.forEach((interval, key) => {
-      clearInterval(interval)
-    })
-    afkIntervals.clear()
-    
-    setTimeout(() => {
-      ctx.reply(
-        `✅ **تمت إعادة التشغيل بنجاح!**\n\n` +
-        `🔗 اتصالات مغلقة: ${closedConnections}\n` +
-        `🧹 تم تنظيف الذاكرة\n\n` +
-        `يمكنك الآن استخدام البوت بشكل طبيعي.`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: mainMenu().reply_markup
-        }
-      )
-    }, 2000)
-  } catch (error) {
-    console.error('❌ خطأ في restart_bot:', error)
-  }
+bot.start(ctx => {
+  ctx.reply('👋 أهلاً بك في نظام MaxBlack Bot!', { 
+    reply_markup: mainMenu().reply_markup 
+  })
 })
 
 /* ➕ إضافة سيرفر */
-bot.action('add_server', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    const subscription = await checkSubscription(ctx)
-    if (!subscription.success) {
-      ctx.session.hasCheckedSubscription = false
-      return ctx.reply(
-        `📢 **يجب الاشتراك أولاً**\n\n` +
-        `اضغط على زر التحقق بعد الاشتراك:`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: subscriptionMenu().reply_markup
-        }
-      )
-    }
-    
-    ctx.session.hasCheckedSubscription = true
-    ctx.session.step = 'server_name'
-    ctx.session.action = 'add'
-    ctx.session.tempServer = {}
-    ctx.session.lastActivity = Date.now()
-    
-    ctx.reply('📝 أدخل اسم للسيرفر (مثال: سيرفر فري):')
-  } catch (error) {
-    console.error('❌ خطأ في add_server:', error)
-  }
+bot.action('add_server', ctx => {
+  ctx.answerCbQuery().catch(() => {})
+  ctx.session.step = 'server_name'
+  ctx.reply('📝 أدخل اسم للسيرفر (مثال: سيرفر فري):')
 })
 
 /* 📋 قائمة السيرفرات */
-bot.action('list_servers', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    if (!ctx.session.servers || ctx.session.servers.length === 0) {
-      return ctx.reply('⚠️ لا توجد سيرفرات مضافة.\nاضغط ➕ إضافة سيرفر', { 
-        reply_markup: mainMenu().reply_markup 
-      })
-    }
-    
-    const serverList = ctx.session.servers.map((s, i) => 
-      `${i+1}. ${s.name} - ${s.host}:${s.port}`
-    ).join('\n')
-    
-    ctx.reply(
-      `📋 **قائمة السيرفرات:**\n\n${serverList}\n\n` +
-      `اختر سيرفر من الأزرار:`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: serversMenu(ctx.session.servers, 'select').reply_markup
-      }
-    )
-  } catch (error) {
-    console.error('❌ خطأ في list_servers:', error)
+bot.action('list_servers', ctx => {
+  ctx.answerCbQuery().catch(() => {})
+  if (!ctx.session.servers || ctx.session.servers.length === 0) {
+    return ctx.reply('⚠️ لا توجد سيرفرات مضافة.', { reply_markup: mainMenu().reply_markup })
   }
-})
-
-/* 🔥 اختيار السيرفر */
-bot.action(/select_(\d+)/, async (ctx) => {
-  try {
-    const index = parseInt(ctx.match[1])
-    console.log(`🔘 اختيار سيرفر رقم: ${index}`)
-    
-    await ctx.answerCbQuery('جاري الاختيار...')
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    if (!ctx.session.servers || !ctx.session.servers[index]) {
-      return ctx.reply('❌ السيرفر غير موجود.')
-    }
-    
-    const selectedServer = ctx.session.servers[index]
-    ctx.session.currentServer = selectedServer
-    ctx.session.lastActivity = Date.now()
-    
-    ctx.reply(
-      `✅ **تم اختيار السيرفر:**\n\n` +
-      `📌 ${selectedServer.name}\n` +
-      `📍 ${selectedServer.host}:${selectedServer.port}\n` +
-      `👤 ${selectedServer.username}\n\n` +
-      `يمكنك الآن الضغط على "▶️ دخول"`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: mainMenu().reply_markup
-      }
-    )
-  } catch (error) {
-    console.error('❌ خطأ في select:', error)
-  }
+  ctx.reply('📋 اختر سيرفر:', { 
+    reply_markup: serversMenu(ctx.session.servers).reply_markup 
+  })
 })
 
 /* ⚙️ إعدادات AFK */
-bot.action('afk_settings', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
+bot.action('afk_settings', ctx => {
+  ctx.answerCbQuery().catch(() => {})
+  ctx.reply('⚙️ إعدادات AFK:', {
+    reply_markup: afkMenu().reply_markup
+  })
+})
+
+/* ◀️ رجوع للقائمة */
+bot.action('back_to_main', ctx => {
+  ctx.answerCbQuery().catch(() => {})
+  ctx.session.step = null
+  ctx.session.currentServer = null
+  ctx.reply('🏠 القائمة الرئيسية:', {
+    reply_markup: mainMenu().reply_markup
+  })
+})
+
+/* ✍️ معالجة الرسائل النصية */
+bot.on('text', ctx => {
+  if (!ctx.session.step) return
+
+  const text = ctx.message.text.trim()
+
+  switch (ctx.session.step) {
+    case 'server_name':
+      ctx.session.tempServer = { name: text }
+      ctx.session.step = 'server_ip'
+      ctx.reply('🌐 أدخل IP السيرفر (مثال: play.server.com):')
+      break
+
+    case 'server_ip':
+      ctx.session.tempServer.host = text
+      ctx.session.step = 'server_port'
+      ctx.reply('🔢 أدخل Port السيرفر (مثال: 19132):')
+      break
+
+    case 'server_port':
+      const port = parseInt(text)
+      if (isNaN(port) || port < 1 || port > 65535) {
+        return ctx.reply('⚠️ Port غير صالح. أدخل رقم بين 1 و 65535:')
       }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    ctx.reply('⚙️ إعدادات AFK:', {
-      reply_markup: afkMenu().reply_markup
+      ctx.session.tempServer.port = port
+      ctx.session.step = 'bot_username'
+      ctx.reply('👤 أدخل اسم البوت في اللعبة:')
+      break
+
+    case 'bot_username':
+      ctx.session.tempServer.username = text
+      ctx.session.step = 'server_version'
+      ctx.reply('🔄 أدخل إصدار السيرفر (مثال: 1.20.50 أو اترك فارغ للاكتشاف التلقائي):')
+      break
+
+    case 'server_version':
+      if (text) {
+        ctx.session.tempServer.version = text
+      }
+      
+      // إضافة السيرفر للقائمة
+      if (!ctx.session.servers) {
+        ctx.session.servers = []
+      }
+      
+      ctx.session.servers.push(ctx.session.tempServer)
+      ctx.session.step = null
+      ctx.session.tempServer = null
+      
+      ctx.reply('✅ تم إضافة السيرفر بنجاح!', {
+        reply_markup: mainMenu().reply_markup
+      })
+      break
+  }
+})
+
+/* 🔘 اختيار سيرفر */
+bot.action(/select_(\d+)/, async ctx => {
+  const index = parseInt(ctx.match[1])
+  if (ctx.session.servers && ctx.session.servers[index]) {
+    ctx.session.currentServer = ctx.session.servers[index]
+    ctx.answerCbQuery(`تم اختيار ${ctx.session.currentServer.name}`)
+    ctx.reply(`✅ السيرفر المحدد: ${ctx.session.currentServer.name}`, {
+      reply_markup: mainMenu().reply_markup
     })
-  } catch (error) {
-    console.error('❌ خطأ في afk_settings:', error)
-  }
-})
-
-/* ▶️ تشغيل AFK */
-bot.action('afk_on', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    if (!ctx.session.currentServer) {
-      return ctx.reply('⚠️ اختر سيرفراً أولاً.')
-    }
-
-    const server = ctx.session.currentServer
-    const serverKey = `${server.host}:${server.port}`
-
-    if (!clients.has(serverKey)) {
-      return ctx.reply('⚠️ البوت غير متصل.')
-    }
-
-    if (afkIntervals.has(serverKey)) {
-      return ctx.reply('⚠️ AFK مفعل بالفعل.')
-    }
-
-    const connection = clients.get(serverKey)
-    
-    const interval = setInterval(() => {
-      if (connection.client) {
-        try {
-          connection.client.queue('player_auth_input', {
-            pitch: 0,
-            yaw: Math.random() * 360 - 180,
-            position: { x: 0, y: 0, z: 0 },
-            move_vector: { x: 0, z: 0 },
-            head_yaw: 0,
-            input_data: { 
-              jump_down: true,
-              auto_jumping: true
-            },
-            input_mode: 'touch',
-            play_mode: 'normal'
-          })
-        } catch (e) {
-          console.log('AFK Error:', e.message)
-        }
-      }
-    }, 15000)
-
-    afkIntervals.set(serverKey, interval)
-    ctx.reply('✅ تم تفعيل AFK')
-  } catch (error) {
-    console.error('❌ خطأ في afk_on:', error)
-  }
-})
-
-/* ⏸️ إيقاف AFK */
-bot.action('afk_off', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-    
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-    
-    if (!ctx.session.currentServer) {
-      return ctx.reply('⚠️ اختر سيرفراً أولاً.')
-    }
-
-    const server = ctx.session.currentServer
-    const serverKey = `${server.host}:${server.port}`
-
-    if (afkIntervals.has(serverKey)) {
-      clearInterval(afkIntervals.get(serverKey))
-      afkIntervals.delete(serverKey)
-      ctx.reply('✅ تم إيقاف AFK')
-    } else {
-      ctx.reply('⚠️ AFK غير مفعل.')
-    }
-  } catch (error) {
-    console.error('❌ خطأ في afk_off:', error)
   }
 })
 
 /* ▶️ دخول للسيرفر */
-bot.action('connect', async (ctx) => {
+bot.action('connect', async ctx => {
+  ctx.answerCbQuery().catch(() => {})
+
+  if (!ctx.session.currentServer) {
+    return ctx.reply('⚠️ الرجاء اختيار سيرفر أولاً من قائمة السيرفرات.')
+  }
+
+  const server = ctx.session.currentServer
+  const serverKey = `${server.host}:${server.port}`
+
+  if (clients.has(serverKey)) {
+    return ctx.reply('⚠️ البوت متصل بالفعل بهذا السيرفر.')
+  }
+
+  ctx.reply(`⏳ جاري الدخول إلى ${server.name}...`)
+
   try {
-    await ctx.answerCbQuery('جاري الاتصال...')
-
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-
-    if (!ctx.session.currentServer) {
-      return ctx.reply('⚠️ اختر سيرفراً أولاً.', {
-        reply_markup: mainMenu().reply_markup
-      })
-    }
-
-    const server = ctx.session.currentServer
-    const serverKey = `${server.host}:${server.port}`
-    
-    if (clients.has(serverKey)) {
-      return ctx.reply(`⚠️ البوت متصل بالفعل.`)
-    }
-
-    ctx.reply(`⏳ جاري الاتصال بـ ${server.name}...`)
-
     const options = {
       host: server.host,
       port: server.port,
-      username: server.username || `Bot_${Date.now().toString().slice(-6)}`,
+      username: server.username || `Bot_${Date.now()}`,
       offline: true,
-      skipPing: true,
-      connectTimeout: 15000,
-      authTitle: 'MaxBlack Railway Bot',
-      profilesFolder: './profiles',
-      autoInitPlayer: true,
-      version: false
+      skipPing: false,
+      connectTimeout: 30000,
+      profilesFolder: './profiles'
     }
 
-    console.log('🔗 محاولة اتصال:', options)
-
-    let client
-    try {
-      client = bedrock.createClient(options)
-    } catch (error) {
-      console.error('❌ فشل إنشاء العميل:', error)
-      return ctx.reply(`❌ فشل الاتصال: ${error.message}`)
+    // إضافة الإصدار إذا تم تحديده
+    if (server.version) {
+      options.version = server.version
+    } else {
+      options.version = false // اكتشاف تلقائي
     }
 
-    const connectionTimeout = setTimeout(() => {
-      if (client && !clients.has(serverKey)) {
-        console.log('⏰ انتهى وقت الاتصال')
-        try {
-          client.close()
-        } catch (e) {
-          console.error('خطأ في الإغلاق:', e)
-        }
-        ctx.reply('⏰ انتهى وقت الاتصال. جرب سيرفراً آخر.')
-      }
-    }, 20000)
+    const client = bedrock.createClient(options)
 
+    // حفظ العميل في الخريطة
     clients.set(serverKey, {
       client,
       server: server.name,
-      connectedAt: new Date(),
-      serverInfo: server,
-      timeout: connectionTimeout
+      connectedAt: new Date()
     })
 
+    // أحداث العميل
     client.on('spawn', () => {
-      clearTimeout(connectionTimeout)
-      console.log(`✅ اتصال ناجح: ${server.name}`)
+      ctx.reply(`🟢 البوت متصل الآن بـ ${server.name}`)
       
-      ctx.reply(
-        `🟢 **تم الاتصال!**\n\n` +
-        `📌 ${server.name}\n` +
-        `👤 ${server.username}\n\n` +
-        `✅ البوت الآن داخل اللعبة`
-      )
-      
+      // تشغيل AFK تلقائياً
       const interval = setInterval(() => {
         if (client) {
           try {
             client.queue('player_auth_input', {
               pitch: 0,
-              yaw: Math.random() * 360 - 180,
+              yaw: 0,
               position: { x: 0, y: 0, z: 0 },
               move_vector: { x: 0, z: 0 },
               head_yaw: 0,
@@ -1171,10 +225,11 @@ bot.action('connect', async (ctx) => {
                 auto_jumping: true
               },
               input_mode: 'touch',
-              play_mode: 'normal'
+              play_mode: 'normal',
+              interaction_model: 'touch'
             })
           } catch (e) {
-            console.log('⚠️ خطأ AFK:', e.message)
+            console.log('AFK Error:', e.message)
           }
         }
       }, 15000)
@@ -1183,306 +238,200 @@ bot.action('connect', async (ctx) => {
     })
 
     client.on('error', (err) => {
-      clearTimeout(connectionTimeout)
-      console.error(`❌ خطأ اتصال: ${err.message}`)
-      
+      console.error('Connection Error:', err)
+      ctx.reply(`❌ خطأ في الاتصال بـ ${server.name}: ${err.message}`)
       cleanupConnection(serverKey)
-      
-      ctx.reply(
-        `❌ **فشل الاتصال**\n\n` +
-        `السبب: ${err.message}\n\n` +
-        `💡 **نصيحة:**\n` +
-        `• جرب سيرفر Aternos\n` +
-        `• تأكد من تشغيل السيرفر\n` +
-        `• جرب مرة أخرى لاحقاً`
-      )
     })
 
-    client.on('disconnect', () => {
-      clearTimeout(connectionTimeout)
-      console.log(`🔴 انقطع الاتصال: ${server.name}`)
+    client.on('disconnect', (packet) => {
+      ctx.reply(`🔴 تم فصل البوت من ${server.name}`)
+      cleanupConnection(serverKey)
+    })
+
+    client.on('server_disconnect', (packet) => {
+      ctx.reply(`⚠️ السيرفر ${server.name} قام بفصل البوت`)
       cleanupConnection(serverKey)
     })
 
   } catch (error) {
-    console.error('❌ خطأ في connect:', error)
-    ctx.reply('❌ حدث خطأ غير متوقع. حاول مرة أخرى.')
+    console.error('Connection Setup Error:', error)
+    ctx.reply(`❌ فشل الاتصال بـ ${server.name}: ${error.message}`)
   }
 })
 
 /* ⏹️ خروج من السيرفر */
-bot.action('disconnect', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
+bot.action('disconnect', ctx => {
+  ctx.answerCbQuery().catch(() => {})
 
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
+  if (!ctx.session.currentServer) {
+    return ctx.reply('⚠️ الرجاء اختيار سيرفر أولاً.')
+  }
+
+  const server = ctx.session.currentServer
+  const serverKey = `${server.host}:${server.port}`
+
+  if (!clients.has(serverKey)) {
+    return ctx.reply('⚠️ البوت غير متصل بهذا السيرفر.')
+  }
+
+  const connection = clients.get(serverKey)
+  connection.client.close()
+  cleanupConnection(serverKey)
+  
+  ctx.reply(`🛑 تم إخراج البوت من ${server.name}`)
+})
+
+/* 🔄 تشغيل/إيقاف AFK */
+bot.action('afk_on', ctx => {
+  ctx.answerCbQuery().catch(() => {})
+  
+  if (!ctx.session.currentServer) {
+    return ctx.reply('⚠️ الرجاء اختيار سيرفر أولاً.')
+  }
+
+  const server = ctx.session.currentServer
+  const serverKey = `${server.host}:${server.port}`
+
+  if (!clients.has(serverKey)) {
+    return ctx.reply('⚠️ البوت غير متصل.')
+  }
+
+  // إذا كان AFK مفعل مسبقاً
+  if (afkIntervals.has(serverKey)) {
+    return ctx.reply('⚠️ AFK مفعل بالفعل.')
+  }
+
+  const connection = clients.get(serverKey)
+  
+  const interval = setInterval(() => {
+    if (connection.client) {
+      try {
+        connection.client.queue('player_auth_input', {
+          pitch: 0,
+          yaw: Math.random() * 360 - 180,
+          position: { x: 0, y: 0, z: 0 },
+          move_vector: { x: 0, z: 0 },
+          head_yaw: 0,
+          input_data: { 
+            jump_down: true,
+            auto_jumping: true
+          },
+          input_mode: 'touch',
+          play_mode: 'normal'
+        })
+      } catch (e) {
+        console.log('AFK Error:', e.message)
       }
-      ctx.session.hasCheckedSubscription = true
     }
+  }, 15000)
 
-    if (!ctx.session.currentServer) {
-      return ctx.reply('⚠️ لم تختر سيرفراً بعد.')
-    }
+  afkIntervals.set(serverKey, interval)
+  ctx.reply('✅ تم تفعيل AFK')
+})
 
+bot.action('afk_off', ctx => {
+  ctx.answerCbQuery().catch(() => {})
+  
+  if (!ctx.session.currentServer) {
+    return ctx.reply('⚠️ الرجاء اختيار سيرفر أولاً.')
+  }
+
+  const server = ctx.session.currentServer
+  const serverKey = `${server.host}:${server.port}`
+
+  if (afkIntervals.has(serverKey)) {
+    clearInterval(afkIntervals.get(serverKey))
+    afkIntervals.delete(serverKey)
+    ctx.reply('✅ تم إيقاف AFK')
+  } else {
+    ctx.reply('⚠️ AFK غير مفعل.')
+  }
+})
+
+/* 📊 حالة البوت */
+bot.action('status', ctx => {
+  ctx.answerCbQuery().catch(() => {})
+
+  let statusMessage = '📊 **حالة البوت:**\n\n'
+  
+  // حالة السيرفر الحالي
+  if (ctx.session.currentServer) {
     const server = ctx.session.currentServer
     const serverKey = `${server.host}:${server.port}`
-
-    if (!clients.has(serverKey)) {
-      return ctx.reply(`⚠️ البوت غير متصل.`)
-    }
-
-    const connection = clients.get(serverKey)
-    if (connection.timeout) {
-      clearTimeout(connection.timeout)
-    }
     
+    statusMessage += `**السيرفر المحدد:** ${server.name}\n`
+    statusMessage += `📍 ${server.host}:${server.port}\n`
+    statusMessage += `👤 ${server.username}\n`
+    
+    if (clients.has(serverKey)) {
+      const connection = clients.get(serverKey)
+      const uptime = Math.floor((new Date() - connection.connectedAt) / 1000)
+      statusMessage += `🟢 **متصل** (منذ ${uptime} ثانية)\n`
+      statusMessage += `⏱️ **AFK:** ${afkIntervals.has(serverKey) ? 'مفعل' : 'معطل'}\n`
+    } else {
+      statusMessage += '🔴 **غير متصل**\n'
+    }
+  } else {
+    statusMessage += '⚠️ **لا يوجد سيرفر محدد**\n'
+  }
+  
+  // إحصاءات عامة
+  statusMessage += `\n**إحصاءات:**\n`
+  statusMessage += `📋 السيرفرات: ${ctx.session.servers ? ctx.session.servers.length : 0}\n`
+  statusMessage += `🔗 اتصالات نشطة: ${clients.size}\n`
+  
+  ctx.reply(statusMessage, {
+    parse_mode: 'Markdown',
+    reply_markup: mainMenu().reply_markup
+  })
+})
+
+/* 🧹 تنظيف الاتصال */
+function cleanupConnection(serverKey) {
+  if (afkIntervals.has(serverKey)) {
+    clearInterval(afkIntervals.get(serverKey))
+    afkIntervals.delete(serverKey)
+  }
+  clients.delete(serverKey)
+}
+
+/* 🧹 تنظيف جميع الاتصالات عند إغلاق البوت */
+process.on('SIGINT', () => {
+  clients.forEach((connection, key) => {
     if (connection.client) {
       connection.client.close()
     }
-    
-    cleanupConnection(serverKey)
-    
-    ctx.reply(`🛑 تم إخراج البوت من ${server.name}`)
-  } catch (error) {
-    console.error('❌ خطأ في disconnect:', error)
-  }
+    cleanupConnection(key)
+  })
+  bot.stop('SIGINT')
 })
 
-/* 📊 الحالة */
-bot.action('status', async (ctx) => {
-  try {
-    await ctx.answerCbQuery()
-
-    // التحقق من الاشتراك
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        ctx.session.hasCheckedSubscription = false
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-
-    let statusMessage = '📊 **حالة البوت:**\n\n'
-    
-    if (ctx.session.currentServer) {
-      const server = ctx.session.currentServer
-      const serverKey = `${server.host}:${server.port}`
-      
-      statusMessage += `**السيرفر المختار:** ${server.name}\n`
-      statusMessage += `📍 ${server.host}:${server.port}\n`
-      statusMessage += `👤 ${server.username}\n\n`
-      
-      if (clients.has(serverKey)) {
-        const connection = clients.get(serverKey)
-        const uptime = Math.floor((new Date() - connection.connectedAt) / 1000)
-        const minutes = Math.floor(uptime / 60)
-        const hours = Math.floor(minutes / 60)
-        
-        let uptimeText = ''
-        if (hours > 0) uptimeText += `${hours} ساعة `
-        if (minutes % 60 > 0) uptimeText += `${minutes % 60} دقيقة `
-        uptimeText += `${uptime % 60} ثانية`
-        
-        statusMessage += `🟢 **متصل** (منذ ${uptimeText})\n`
-        statusMessage += `⏱️ **AFK:** ${afkIntervals.has(serverKey) ? 'مفعل ✅' : 'معطل ❌'}\n`
-      } else {
-        statusMessage += '🔴 **غير متصل**\n'
-      }
-    } else {
-      statusMessage += '⚠️ **لا يوجد سيرفر مختار**\n'
-      statusMessage += 'اضغط 📋 قائمة السيرفرات لاختيار سيرفر\n'
-    }
-    
-    statusMessage += `\n**إحصاءات:**\n`
-    statusMessage += `📋 عدد السيرفرات: ${ctx.session.servers ? ctx.session.servers.length : 0}\n`
-    statusMessage += `🔗 اتصالات نشطة: ${clients.size}\n`
-    statusMessage += `🔄 محاولات إعادة تشغيل: ${restartAttempts}\n`
-    
-    if (ctx.session.servers && ctx.session.servers.length > 0) {
-      statusMessage += `\n**السيرفرات المضافة:**\n`
-      ctx.session.servers.forEach((server, index) => {
-        const isCurrent = ctx.session.currentServer && 
-                         server.host === ctx.session.currentServer.host &&
-                         server.port === ctx.session.currentServer.port
-        statusMessage += `${isCurrent ? '▶️' : '📌'} ${index + 1}. ${server.name}\n`
-      })
-    }
-    
-    ctx.reply(statusMessage, {
-      parse_mode: 'Markdown',
-      reply_markup: mainMenu().reply_markup
-    })
-  } catch (error) {
-    console.error('❌ خطأ في status:', error)
-  }
-})
-
-/* ✍️ معالجة الرسائل النصية */
-bot.on('text', async (ctx) => {
-  try {
-    if (!ctx.session.hasCheckedSubscription) {
-      const subscription = await checkSubscription(ctx)
-      if (!subscription.success) {
-        return ctx.reply(
-          `📢 **يجب التحقق من الاشتراك أولاً**`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: subscriptionMenu().reply_markup
-          }
-        )
-      }
-      ctx.session.hasCheckedSubscription = true
-    }
-
-    if (!ctx.session || !ctx.session.step) {
-      return ctx.reply('👋 استخدم الأزرار للتفاعل:', {
-        reply_markup: mainMenu().reply_markup
-      })
-    }
-
-    const text = ctx.message.text.trim()
-    ctx.session.lastActivity = Date.now()
-
-    switch (ctx.session.step) {
-      case 'server_name':
-        ctx.session.tempServer.name = text
-        ctx.session.step = 'server_ip'
-        return ctx.reply('🌐 أدخل IP السيرفر:')
-
-      case 'server_ip':
-        ctx.session.tempServer.host = text
-        ctx.session.step = 'server_port'
-        return ctx.reply('🔢 أدخل Port السيرفر:')
-
-      case 'server_port':
-        const port = parseInt(text)
-        if (isNaN(port) || port < 1 || port > 65535) {
-          return ctx.reply('⚠️ Port غير صالح. أدخل رقم بين 1 و 65535:')
-        }
-        ctx.session.tempServer.port = port
-        ctx.session.step = 'bot_username'
-        return ctx.reply('👤 أدخل اسم البوت:')
-
-      case 'bot_username':
-        ctx.session.tempServer.username = text
-        
-        const newServer = {
-          id: Date.now(),
-          name: ctx.session.tempServer.name,
-          host: ctx.session.tempServer.host,
-          port: ctx.session.tempServer.port,
-          username: ctx.session.tempServer.username || `Bot_${Date.now().toString().slice(-6)}`,
-          created: new Date().toISOString()
-        }
-        
-        if (!ctx.session.servers) {
-          ctx.session.servers = []
-        }
-        ctx.session.servers.push(newServer)
-        
-        ctx.session.step = null
-        ctx.session.action = null
-        ctx.session.tempServer = {}
-        
-        ctx.reply(
-          `✅ **تم إضافة السيرفر!**\n\n` +
-          `📌 ${newServer.name}\n` +
-          `📍 ${newServer.host}:${newServer.port}\n` +
-          `👤 ${newServer.username}\n\n` +
-          `يمكنك الآن الاتصال.`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: mainMenu().reply_markup
-          }
-        )
-        break
-    }
-  } catch (error) {
-    console.error('❌ خطأ في text handler:', error)
-    ctx.reply('❌ حدث خطأ. حاول مرة أخرى.')
-  }
-})
-
-/* 🛠️ معالجة الأخطاء العالمية */
+/* 🛠️ معالجة الأخطاء */
 process.on('uncaughtException', (error) => {
-  console.error('⚠️ خطأ غير معالج:', error)
-  console.error('Stack:', error.stack)
-  
-  cleanupAll()
-  
-  if (restartAttempts < MAX_RESTART_ATTEMPTS) {
-    restartAttempts++
-    console.log(`🔄 محاولة إعادة تشغيل ${restartAttempts}/${MAX_RESTART_ATTEMPTS}`)
-    
-    setTimeout(() => {
-      console.log('🚀 إعادة تشغيل البوت...')
-      process.exit(1)
-    }, 5000)
-  } else {
-    console.log('❌ تجاوز الحد الأقصى لإعادة التشغيل')
-    process.exit(1)
-  }
+  console.error('Uncaught Exception:', error)
 })
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('⚠️ وعد مرفوض:', reason)
-})
-
-process.on('SIGTERM', () => {
-  console.log('🛑 تلقي إشارة إيقاف SIGTERM')
-  cleanupAll()
-  bot.stop('SIGTERM')
-  process.exit(0)
-})
-
-process.on('SIGINT', () => {
-  console.log('🛑 تلقي إشارة إيقاف SIGINT')
-  cleanupAll()
-  bot.stop('SIGINT')
-  process.exit(0)
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
 })
 
 /* 🚀 تشغيل البوت */
-try {
-  bot.launch({
-    dropPendingUpdates: true,
-    allowedUpdates: ['message', 'callback_query']
-  }).then(() => {
-    console.log('✅✅✅ MaxBlack Bot يعمل على Railway! ✅✅✅')
-    console.log('🔧 الإصلاح: تم ترتيب تعريف الدوال')
-    console.log('🧹 تنظيف ذاكرة تلقائي مفعل')
-    console.log('🚀 جاهز للاستخدام')
-    console.log('===========================')
-    
-    startCleanup()
-    
-    setInterval(() => {
-      console.log('📡 إرسال ping للحفاظ على النشاط')
-    }, 60000)
-    
-  }).catch(error => {
-    console.error('❌ فشل تشغيل البوت:', error)
-    process.exit(1)
-  })
-} catch (error) {
-  console.error('❌ خطأ في تشغيل البوت:', error)
-  process.exit(1)
-}
+bot.launch({
+  dropPendingUpdates: true,
+  allowedUpdates: ['message', 'callback_query']
+}).then(() => {
+  console.log('✅ MaxBlack System is Online - All Versions Supported')
+  console.log('📞 Bot is running...')
+})
+
+// أوامر إضافية للمطور
+bot.command('clear', (ctx) => {
+  ctx.session.servers = []
+  ctx.session.currentServer = null
+  ctx.reply('🧹 تم مسح جميع البيانات.')
+})
+
+bot.command('restart', (ctx) => {
+  ctx.reply('🔄 إعادة تشغيل النظام...')
+  // يمكن إضافة منطق إعادة التشغيل هنا
+})
