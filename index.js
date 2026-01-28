@@ -3,10 +3,10 @@ const bedrock = require('bedrock-protocol');
 const editJsonFile = require("edit-json-file");
 const http = require('http');
 
-// 🌐 نظام الاستدامة لضمان العمل 24/7 (Railway)
+// 🌐 محرك الاستدامة لضمان العمل 24/7
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end("نظام MaxBlack الشامل يعمل بأعلى حماية 🛡️");
+    res.end("نظام MaxBlack Ultra المتكامل يعمل بنجاح 🛡️");
 }).listen(process.env.PORT || 3000);
 
 const token = '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU';
@@ -32,7 +32,7 @@ bot.start((ctx) => {
 
 // ✅ إصلاح زر إعدادات النظام
 bot.action('settings', (ctx) => {
-    ctx.editMessageText(`⚙️ *إعدادات النظام الذكية:*\n\n• *حماية الانهيار:* مفعلة ✅\n• *نظام Anti-AFK:* (حركة + قفز) ✅\n• *الإصدار:* تلقائي (يدعم الكل) 🔄\n• *محرك الاستجابة:* فوري ⚡`, {
+    ctx.editMessageText(`⚙️ *إعدادات الحماية المتقدمة:*\n\n• الإصدار المعتمد: 1.21.130 ✅\n• حماية الانهيار: مفعلة 🛡️\n• نظام Anti-AFK: (قفز + دوران + تسلل) 🔄\n• محاكاة الجهاز: Samsung S24 Ultra 📱`, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع للقائمة', 'home')]])
     });
@@ -40,13 +40,13 @@ bot.action('settings', (ctx) => {
 
 // ✅ إصلاح زر المساعدة
 bot.action('help', (ctx) => {
-    ctx.editMessageText(`❓ *دليل البقاء متصلاً:*\n\n1️⃣ أضف السيرفر (IP ثم Port).\n2️⃣ النظام سيتعرف على إصدار سيرفرك تلقائياً.\n3️⃣ سيبدأ البوت بالتحرك والرد على حزم السيرفر لمنع الطرد.\n\n⚠️ إذا واجهت مشكلة، تأكد أن السيرفر لا يحتاج White-list.`, {
+    ctx.editMessageText(`❓ *دليل البقاء متصلاً:*\n\n1️⃣ أضف السيرفر (IP ثم Port).\n2️⃣ اضغط "تشغيل الحماية" من قائمة سيرفراتي.\n3️⃣ سيبدأ البوت بالتحرك والرد على السيرفر تلقائياً لمنع طرده.\n\n⚠️ إذا خرج البوت بعد ثوانٍ، تأكد أن السيرفر لا يحظر البوتات.`, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع للقائمة', 'home')]])
     });
 });
 
-// 🛠️ إضافة سيرفر (IP ثم Port)
+// 🛠️ إضافة سيرفر
 bot.action('add_srv', (ctx) => {
     ctx.session = { step: 'get_host' };
     ctx.reply('📥 *أرسل الآن عنوان السيرفر (IP) فقط:*');
@@ -61,10 +61,10 @@ bot.on('text', async (ctx) => {
     } 
     else if (ctx.session?.step === 'get_port') {
         let servers = db.get(`${userId}.servers`) || [];
-        servers.push({ host: ctx.session.tempHost, port: ctx.message.text.trim(), bot_name: "MaxBlack_" + Math.floor(Math.random() * 99) });
+        servers.push({ host: ctx.session.tempHost, port: ctx.message.text.trim(), bot_name: "MaxBlack_" + Math.floor(Math.random() * 999) });
         db.set(`${userId}.servers`, servers);
         ctx.session = null;
-        ctx.reply('✅ *تم حفظ السيرفر بنجاح!*', mainUI);
+        ctx.reply('✅ *تم حفظ البيانات بنجاح!*', mainUI);
     }
 });
 
@@ -91,7 +91,7 @@ bot.action(/^manage_(\d+)$/, (ctx) => {
     });
 });
 
-// ▶️ المحرك الشامل لجميع الإصدارات (Anti-AFK + Crash Safe)
+// ▶️ المحرك المتكامل (Anti-AFK + 1.21.130 + Crash Safe)
 bot.action(/^toggle_(\d+)$/, async (ctx) => {
     const idx = ctx.match[1];
     const userId = ctx.from.id;
@@ -101,25 +101,24 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
         activeClients[userId].close();
         clearInterval(afkIntervals[userId]);
         delete activeClients[userId];
-        return ctx.reply("🛑 *تم إيقاف الحماية.*");
+        return ctx.reply("🛑 *تم إيقاف الحماية وفصل الاتصال.*");
     }
 
     try {
-        ctx.answerCbQuery("⏳ جاري فحص الإصدار وتثبيت الحماية...");
+        ctx.answerCbQuery("⏳ جاري تفعيل الحماية والـ Anti-AFK...");
         
-        // استخدام محرك bedrock-protocol للتعرف التلقائي
         activeClients[userId] = bedrock.createClient({
             host: s.host,
             port: parseInt(s.port),
             username: s.bot_name,
             offline: true,
+            version: '1.21.130',
             skipPing: true,
             connectTimeout: 30000,
             profiles: { platform: 1, deviceModel: 'Samsung S24 Ultra' }
-            // ملاحظة: لم نضع version هنا ليقوم المحرك بالتعرف التلقائي
         });
 
-        // الاستجابة لحزم الكمون لمنع الطرد السريع
+        // الاستجابة الفورية لمنع الخروج السريع
         activeClients[userId].on('packet', (packet, meta) => {
             if (meta.name === 'network_stack_latency') {
                 activeClients[userId].queue('network_stack_latency', { server_time: packet.server_time, needs_response: false });
@@ -127,21 +126,37 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
         });
 
         activeClients[userId].on('spawn', () => {
-            ctx.reply(`✅ *تم الدخول بنجاح! البوت الآن يحمي السيرفر بأي إصدار كان.*`);
+            ctx.reply(`✅ *أبشر يا بطل! البوت استقر داخل السيرفر.* \n🔄 *نظام Anti-AFK المطور يعمل الآن (قفز + دوران + دردشة).*`);
             
-            let tick = 0;
+            let afkTick = 0;
             afkIntervals[userId] = setInterval(() => {
                 if (activeClients[userId]) {
-                    tick++;
-                    // حركة دورانية + قفز كل 10 ثوانٍ
+                    afkTick++;
+                    
+                    // 1️⃣ نظام الحركة المركب (Anti-AFK)
                     activeClients[userId].queue('player_auth_input', {
-                        pitch: 0, yaw: (tick * 20) % 360, 
-                        position: { x: 0, y: 0, z: 0 }, move_vector: { x: 0, z: 0 },
-                        head_yaw: (tick * 20) % 360, input_data: { jump_down: tick % 2 === 0 }, 
-                        input_mode: 'touch', play_mode: 'normal'
+                        pitch: 0, 
+                        yaw: (afkTick * 20) % 360, 
+                        position: { x: 0, y: 0, z: 0 }, 
+                        move_vector: { x: 0, z: 0 },
+                        head_yaw: (afkTick * 20) % 360, 
+                        input_data: { 
+                            jump_down: afkTick % 2 === 0, 
+                            sneak_down: afkTick % 3 === 0 
+                        }, 
+                        input_mode: 'touch', 
+                        play_mode: 'normal'
                     });
+
+                    // 2️⃣ نبضة الدردشة كل 40 ثانية
+                    if (afkTick % 4 === 0) {
+                        activeClients[userId].queue('text', { 
+                            type: 'chat', needs_translation: false, source_name: s.bot_name, 
+                            xuid: '', platform_chat_id: '', message: '🛡️ MaxBlack Anti-AFK Active' 
+                        });
+                    }
                 }
-            }, 10000);
+            }, 10000); // تحديث كل 10 ثوانٍ لضمان أعلى استقرار
         });
 
         activeClients[userId].on('error', (err) => {
@@ -150,7 +165,7 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
             clearInterval(afkIntervals[userId]);
         });
 
-    } catch (e) { ctx.reply("❌ فشل الاتصال التلقائي."); }
+    } catch (e) { ctx.reply("❌ حدث خطأ في الاتصال، تأكد من بيانات السيرفر."); }
 });
 
 bot.action('home', (ctx) => ctx.editMessageText('*مرحباً بك، أنا هنا لحماية سيرفرك من قطع الاتصال* 🛡️', { parse_mode: 'Markdown', ...mainUI }));
@@ -159,8 +174,8 @@ bot.action(/^del_(\d+)$/, (ctx) => {
     let servers = db.get(`${ctx.from.id}.servers`);
     servers.splice(ctx.match[1], 1);
     db.set(`${ctx.from.id}.servers`, servers);
-    ctx.editMessageText("✅ تم الحذف.", Markup.inlineKeyboard([[Markup.button.callback('🔙', 'list_srv')]]));
+    ctx.editMessageText("✅ تم حذف السيرفر.", Markup.inlineKeyboard([[Markup.button.callback('🔙', 'list_srv')]]));
 });
 
 bot.launch();
-console.log('🚀 نظام MaxBlack الشامل (جميع الإصدارات) يعمل الآن!');
+console.log('🚀 نظام MaxBlack Ultra المتكامل يعمل الآن بكافة الميزات!');
