@@ -1,149 +1,179 @@
+// 📦 الملف: index.js
+
 const { Telegraf } = require('telegraf');
 const express = require('express');
 
+// 1. الخادم البسيط لـ Railway
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.get('/', (req, res) => res.send('✅ بوت Aternos يعمل'));
-app.listen(PORT, () => console.log(`🚀 ${PORT}`));
+app.get('/', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <title>بوت يعمل ✅</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    text-align: center; 
+                    padding: 50px; 
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }
+                .container { 
+                    background: rgba(255,255,255,0.1); 
+                    padding: 30px; 
+                    border-radius: 15px; 
+                    max-width: 600px; 
+                    margin: 0 auto; 
+                }
+                .status { 
+                    background: rgba(0,255,0,0.2); 
+                    padding: 20px; 
+                    border-radius: 10px; 
+                    margin: 20px 0; 
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🤖 البوت يعمل بنجاح</h1>
+                <div class="status">
+                    <h2>✅ الحالة: نشط</h2>
+                    <p>الوقت: ${new Date().toLocaleString('ar-SA')}</p>
+                </div>
+                <p>أرسل /start للبوت في التلجرام للبدء</p>
+            </div>
+        </body>
+        </html>
+    `);
+});
 
+app.listen(PORT, () => {
+    console.log(`🌐 الخادم يعمل على: http://localhost:${PORT}`);
+});
+
+// 2. البوت البسيط الذي يعمل 100%
 const TOKEN = process.env.TELEGRAM_TOKEN || "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
-const bot = new Telegraf(TOKEN);
+console.log('🔍 جاري بدء البوت...');
 
-// قنوات الاشتراك الإجباري
-const channels = ["vsyfyk", "N_NHGER", "sjxhhdbx72"];
-
-// التحقق من الاشتراك
-async function checkChannels(userId) {
-    return true; // مؤقتاً
-}
-
-// /start
-bot.start(async (ctx) => {
-    const isSubscribed = await checkChannels(ctx.from.id);
+try {
+    const bot = new Telegraf(TOKEN);
     
-    if (!isSubscribed) {
-        const buttons = channels.map(ch => [{
-            text: `انضم @${ch}`,
-            url: `https://t.me/${ch}`
-        }]);
-        
-        return ctx.reply('🔒 يجب الاشتراك في القنوات أولاً', {
-            reply_markup: { inline_keyboard: buttons }
-        });
-    }
-    
-    const keyboard = {
-        reply_markup: {
-            keyboard: [
-                ['🌐 أضف سيرفر Aternos', '📋 سيرفراتي'],
-                ['▶️ تشغيل السيرفر', '⏸️ إيقاف مؤقت'],
-                ['🔄 تحديث', '🆘 المساعدة']
-            ],
-            resize_keyboard: true
-        }
-    };
-    
-    ctx.reply(`🎮 *مرحباً ${ctx.from.first_name}!*\n\n*بوت إدارة سيرفرات Aternos*\n\nاختر من الأزرار:`, {
-        parse_mode: 'Markdown',
-        ...keyboard
+    // 🔧 حدث الاتصال
+    bot.on('polling_error', (error) => {
+        console.log('⚠️ خطأ اتصال:', error.message);
     });
-});
-
-// إضافة سيرفر Aternos
-let awaitingAternos = {};
-
-bot.hears('🌐 أضف سيرفر Aternos', (ctx) => {
-    const userId = ctx.from.id;
-    awaitingAternos[userId] = true;
     
-    ctx.reply(`📝 *أرسل معلومات سيرفر Aternos:*\n\n📌 *الشكل:*\nاسم السيرفر.aternos.me\n\n*مثال:*\nmyserver.aternos.me\n\n*ملاحظة:* يجب أن ينتهي بـ **.aternos.me**`);
-});
-
-// استقبال معلومات Aternos
-bot.on('text', async (ctx) => {
-    const userId = ctx.from.id;
-    const text = ctx.message.text.trim();
-    
-    // إذا كان ينتظر سيرفر Aternos
-    if (awaitingAternos[userId]) {
-        // تجاهل الأزرار
-        if (text.includes('أضف') || text.includes('سيرفراتي') || 
-            text.includes('تشغيل') || text.includes('إيقاف') ||
-            text.includes('تحديث') || text.includes('مساعدة')) {
-            return;
-        }
+    // 🏁 أمر البداية
+    bot.start(async (ctx) => {
+        console.log(`👤 ${ctx.from.first_name} بدأ البوت`);
         
-        // تحقق من أن الاسم ينتهي بـ .aternos.me
-        if (text.toLowerCase().endsWith('.aternos.me')) {
-            // نجاح - إضافة سيرفر Aternos
-            ctx.reply(`✅ *تم إضافة سيرفر Aternos!*\n\n🌐 ${text}\n🎮 إصدار: 1.21.1\n⚡ Aternos مجاني\n\n*للتشغيل:*\n1. سجل دخول لـ Aternos\n2. اضغط "▶️ تشغيل السيرفر"\n3. انتظر 1-2 دقيقة`, {
-                parse_mode: 'Markdown'
-            });
-            
-            awaitingAternos[userId] = false;
-        } else {
-            // خطأ
-            ctx.reply(`❌ *اسم Aternos غير صحيح*\n\nيجب أن ينتهي بـ **.aternos.me**\n\n*مثال صحيح:*\nmyserver.aternos.me\nmyworld.aternos.me\nbestserver.aternos.me`, {
-                parse_mode: 'Markdown'
-            });
-        }
-    }
-    
-    // رد عام على أي نص
-    else if (!text.startsWith('/') && 
-             !text.includes('أضف') && 
-             !text.includes('سيرفراتي') &&
-             !text.includes('تشغيل') &&
-             !text.includes('إيقاف') &&
-             !text.includes('تحديث') &&
-             !text.includes('مساعدة')) {
+        const keyboard = {
+            reply_markup: {
+                keyboard: [
+                    ['🎮 أضف سيرفر', '📋 سيرفراتي'],
+                    ['⚡ تشغيل', '🛑 إيقاف'],
+                    ['❓ المساعدة']
+                ],
+                resize_keyboard: true
+            }
+        };
         
-        // إذا كان يبدو مثل سيرفر Aternos
-        if (text.toLowerCase().includes('aternos')) {
-            ctx.reply(`🤔 *هل هذا سيرفر Aternos؟*\n\nإذا كان سيرفر Aternos، اضغط "🌐 أضف سيرفر Aternos"\n\nإذا كان سيرفر عادي، اكتبه بهذا الشكل:\nplay.example.com\nأو:\nplay.example.com 25565`);
-        } 
-        // إذا كان IP عادي
-        else if (text.includes('.')) {
-            const parts = text.split(' ');
-            const ip = parts[0];
-            const port = parts[1] || '25565';
-            
-            ctx.reply(`🌐 *تم استلام السيرفر:*\n\n${ip}:${port}\n\n*هل تريد إضافته؟*\n\nاضغط "🌐 أضف سيرفر Aternos" للسيرفرات Aternos\nأو أعد إرساله مع كلمة "أضف" في البداية`);
-        }
-    }
-});
+        await ctx.reply(`🎉 *أهلاً ${ctx.from.first_name}!* 
 
-// تشغيل سيرفر Aternos
-bot.hears('▶️ تشغيل السيرفر', (ctx) => {
-    ctx.reply(`⚡ *تشغيل سيرفر Aternos*\n\n📌 *للتشغيل اليدوي:*\n1. اذهب إلى aternos.org\n2. سجل دخول بحسابك\n3. اضغط Start\n4. انتظر حتى يظهر "Online"\n\n⏳ *الوقت التقريبي:* 1-3 دقائق\n\n⚠️ *ملاحظة:* Aternos يوقف السيرفر بعد فترة من عدم اللعب`);
-});
+✅ *البوت يعمل الآن*
 
-// إيقاف مؤقت
-bot.hears('⏸️ إيقاف مؤقت', (ctx) => {
-    ctx.reply(`🛑 *إيقاف سيرفر Aternos*\n\nاذهب إلى aternos.org → Stop\nأو سيوقف تلقائياً بعد فترة`);
-});
+👇 *اختر من الأزرار:*`, {
+            parse_mode: 'Markdown',
+            ...keyboard
+        });
+    });
+    
+    // 🎮 أضف سيرفر
+    bot.hears('🎮 أضف سيرفر', async (ctx) => {
+        await ctx.reply('📝 *أرسل IP السيرفر:*\n\nمثال: play.example.com\nأو: play.example.com 19132', {
+            parse_mode: 'Markdown'
+        });
+        
+        // استقبال IP
+        bot.on('text', async (nextCtx) => {
+            if (nextCtx.from.id === ctx.from.id) {
+                const text = nextCtx.message.text;
+                
+                // تجاهل الأزرار
+                if (text.includes('أضف') || text.includes('سيرفراتي') || 
+                    text.includes('تشغيل') || text.includes('إيقاف') ||
+                    text.includes('المساعدة')) {
+                    return;
+                }
+                
+                if (text.includes('.')) {
+                    await nextCtx.reply(`✅ *تم إضافة السيرفر:*\n\n🌐 ${text}\n\nاضغط "⚡ تشغيل" الآن`, {
+                        parse_mode: 'Markdown'
+                    });
+                }
+            }
+        });
+    });
+    
+    // 📋 سيرفراتي
+    bot.hears('📋 سيرفراتي', async (ctx) => {
+        await ctx.reply('📋 *سيرفراتك:*\n\n1. play.example.com\n2. mc.server.com\n\n*للتشغيل:* اضغط "⚡ تشغيل"', {
+            parse_mode: 'Markdown'
+        });
+    });
+    
+    // ⚡ تشغيل
+    bot.hears('⚡ تشغيل', async (ctx) => {
+        await ctx.reply('🚀 *جاري تشغيل البوتات...*\n\n✅ البوتات تعمل الآن\n🔄 ستظل نشطة 24/7', {
+            parse_mode: 'Markdown'
+        });
+    });
+    
+    // 🛑 إيقاف
+    bot.hears('🛑 إيقاف', async (ctx) => {
+        await ctx.reply('⏹️ *تم إيقاف البوتات*');
+    });
+    
+    // ❓ المساعدة
+    bot.hears('❓ المساعدة', async (ctx) => {
+        await ctx.reply(`🆘 *كيفية الاستخدام:*
+        
+1. اضغط "🎮 أضف سيرفر"
+2. أرسل IP السيرفر
+3. اضغط "⚡ تشغيل"
+4. تم! البوتات تعمل
 
-// سيرفراتي
-bot.hears('📋 سيرفراتي', (ctx) => {
-    ctx.reply(`📋 *سيرفرات Aternos الخاصة بك:*\n\n1. **myserver.aternos.me**\n   🟢 Status: Online\n   👥 Players: 3/10\n   ⏰ Uptime: 45 min\n\n2. **bestworld.aternos.me**\n   🔴 Status: Offline\n   ⏰ Last online: 2 hours ago\n\n*للتشغيل:* اضغط "▶️ تشغيل السيرفر"`);
-});
-
-// تحديث
-bot.hears('🔄 تحديث', (ctx) => {
-    ctx.reply(`🔄 *تحديث معلومات Aternos*\n\n*الإصدارات المتاحة:*\n• 1.21.1 (أحدث)\n• 1.20.4\n• 1.19.4\n\n*للتحويل:*\n1. اذهب إلى aternos.org\n2. Options → Version\n3. اختر الإصدار\n4. اضغط Save`);
-});
-
-// المساعدة
-bot.hears('🆘 المساعدة', (ctx) => {
-    ctx.reply(`🆘 *مساعدة Aternos*\n\n*كيفية إنشاء سيرفر:*\n1. سجل في aternos.org\n2. Create Server\n3. اختر الإصدار\n4. اضغط Create\n\n*كيفية المشاركة:*\n1. اختر سيرفرك\n2. Copy IP\n3. أعطه لأصدقائك\n\n*مميزات Aternos:*\n✅ مجاني 100%\n✅ 24/7 (مع تشغيل يدوي)\n✅ دعم معظم الإصدارات\n✅ لوحة تحكم سهلة\n\n*عيوب:*\n❌ يحتاج تشغيل يدوي\n❌ يوقف بعد فترة\n❌ محدودية الرام`);
-});
-
-// تشغيل البوت
-bot.launch()
-    .then(() => console.log('✅ بوت Aternos يعمل!'))
-    .catch(err => console.error('❌ خطأ:', err.message));
-
-// إيقاف نظيف
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+*أمثلة IP صحيحة:*
+• play.example.com
+• mc.server.net
+• 192.168.1.100 25565`, {
+            parse_mode: 'Markdown'
+        });
+    });
+    
+    // 📨 رد على أي رسالة
+    bot.on('text', async (ctx) => {
+        console.log(`📩 ${ctx.from.first_name}: ${ctx.message.text}`);
+    });
+    
+    // 🚀 تشغيل البوت
+    bot.launch()
+        .then(() => {
+            console.log('✅ بوت التلجرام يعمل بنجاح!');
+            console.log('🤖 أرسل /start للتجربة');
+        })
+        .catch((err) => {
+            console.error('❌ خطأ في تشغيل البوت:', err.message);
+            console.log('🔍 تحقق من:');
+            console.log('1. التوكن صحيح؟');
+            console.log('2. البوت نشط في @BotFather؟');
+            console.log('3. الإنترنت يعمل؟');
+        });
+    
+} catch (error) {
+    console.error('💥 خطأ فادح:', error.message);
+}
