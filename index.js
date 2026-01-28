@@ -3,10 +3,10 @@ const bedrock = require('bedrock-protocol');
 const editJsonFile = require("edit-json-file");
 const http = require('http');
 
-// 🌐 محرك الاستدامة لضمان العمل 24/7
+// 🌐 نظام الاستدامة لضمان العمل 24/7
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end("نظام MaxBlack Ultra: يعمل بالهوية الثابتة ✅");
+    res.end("نظام MaxBlack Ultra v3: يعمل بأعلى كفاءة 🛡️");
 }).listen(process.env.PORT || 3000);
 
 const token = '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU';
@@ -18,7 +18,7 @@ bot.use(session());
 let activeClients = {};
 let afkIntervals = {};
 
-// 🎨 الواجهة الرئيسية الاحترافية
+// 🎨 الواجهة الرئيسية (Scannable & Clean)
 const mainUI = Markup.inlineKeyboard([
     [Markup.button.callback('🎮 سـيـرفـراتـي المـحـفـوظـة', 'list_srv')],
     [Markup.button.callback('➕ إضـافـة سـيـرفـر جـديـد', 'add_srv')],
@@ -30,23 +30,23 @@ bot.start((ctx) => {
     ctx.replyWithMarkdown(`*مرحباً بك، أنا هنا لحماية سيرفرك من قطع الاتصال* 🛡️`, mainUI);
 });
 
-// ⚙️ إعدادات النظام
+// ✅ إصلاح زر إعدادات النظام
 bot.action('settings', (ctx) => {
-    ctx.editMessageText(`⚙️ *إعدادات النظام الحالية:* \n\n• *الهوية:* ثابتة (MaxBlack_Bot) 🆔\n• *الإصدار:* تلقائي 🔄\n• *حماية الانهيار:* نشطة 🛡️\n• *نظام Anti-AFK:* مفعل (قفز + دوران) ✅`, {
+    ctx.editMessageText(`⚙️ *إعدادات النظام الحالية:* \n\n• *نظام الاتصال:* مستقر (1.21.130) ✅\n• *حماية الانهيار:* مفعلة 🛡️\n• *نظام Anti-AFK:* نبض حركي كامل 🔄\n• *الهوية:* اسم ثابت ✅`, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع للقائمة', 'home')]])
     });
 });
 
-// ❓ المساعدة
+// ✅ إصلاح زر المساعدة
 bot.action('help', (ctx) => {
-    ctx.editMessageText(`❓ *دليل المستخدم:* \n\n1️⃣ أضف السيرفر (IP/Port).\n2️⃣ شغل الحماية من قائمة السيرفرات.\n3️⃣ إذا طردك السيرفر، تأكد أنه "Cracked" ولا يحتاج تسجيل دخول (Login).`, {
+    ctx.editMessageText(`❓ *دليل حل مشاكل الدخول:* \n\n1️⃣ تأكد أن السيرفر "Cracked" ولا يحتاج حساب مايكروسوفت.\n2️⃣ البوت يدخل تلقائياً ويقوم بالقفز لمنع الطرد.\n3️⃣ إذا لم يدخل البوت، تأكد من صحة الـ IP والبورت.`, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع للقائمة', 'home')]])
     });
 });
 
-// 🛠️ إضافة سيرفر
+// 🛠️ إضافة سيرفر جديد
 bot.action('add_srv', (ctx) => {
     ctx.session = { step: 'get_host' };
     ctx.reply('📥 *أرسل الآن عنوان السيرفر (IP) فقط:*');
@@ -57,11 +57,10 @@ bot.on('text', async (ctx) => {
     if (ctx.session?.step === 'get_host') {
         ctx.session.tempHost = ctx.message.text.trim();
         ctx.session.step = 'get_port';
-        ctx.reply('🔢 *أرسل الآن البورت (Port):*');
+        ctx.reply('🔢 *جميل! أرسل الآن البورت (Port):*');
     } 
     else if (ctx.session?.step === 'get_port') {
         let servers = db.get(`${userId}.servers`) || [];
-        // استخدام اسم ثابت بدلاً من العشوائي
         servers.push({ 
             host: ctx.session.tempHost, 
             port: ctx.message.text.trim(), 
@@ -69,7 +68,7 @@ bot.on('text', async (ctx) => {
         });
         db.set(`${userId}.servers`, servers);
         ctx.session = null;
-        ctx.reply('✅ *تم حفظ السيرفر بالهوية الثابتة!*', mainUI);
+        ctx.reply('✅ *تم حفظ السيرفر بنجاح!*', mainUI);
     }
 });
 
@@ -96,7 +95,7 @@ bot.action(/^manage_(\d+)$/, (ctx) => {
     });
 });
 
-// ▶️ المحرك النهائي (بدون تغيير هوية - ثابت)
+// ▶️ المحرك الجديد كلياً (إصلاح مشكلة عدم الدخول)
 bot.action(/^toggle_(\d+)$/, async (ctx) => {
     const idx = ctx.match[1];
     const userId = ctx.from.id;
@@ -110,52 +109,49 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
     }
 
     try {
-        ctx.answerCbQuery("⏳ جاري الاتصال الثابت...");
+        ctx.answerCbQuery("⏳ جاري الاقتحام وتثبيت الاتصال...");
         
         activeClients[userId] = bedrock.createClient({
             host: s.host,
             port: parseInt(s.port),
-            username: s.bot_name, // اسم ثابت
+            username: s.bot_name,
             offline: true,
-            skipPing: false,
-            connectTimeout: 60000,
-            profiles: { platform: 1, deviceModel: 'SM-S928B' }
-        });
-
-        // الرد الفوري على حزم الكمون (يمنع الطرد السريع)
-        activeClients[userId].on('packet', (packet, meta) => {
-            if (meta.name === 'network_stack_latency') {
-                activeClients[userId].queue('network_stack_latency', { 
-                    server_time: packet.server_time, 
-                    needs_response: false 
-                });
+            version: '1.21.130', // العودة للإصدار الأكثر استقراراً للدخول
+            skipPing: true,
+            connectTimeout: 30000,
+            profiles: {
+                platform: 1, 
+                deviceModel: 'Samsung S24 Ultra' 
             }
         });
 
+        // نظام النبض الحركي الفوري (Anti-AFK)
         activeClients[userId].on('spawn', () => {
-            ctx.reply(`✅ *تم الدخول بنجاح باسم ثابت!* \n🛡️ نظام Anti-AFK والحماية نشط الآن.`);
+            ctx.reply(`✅ *تم الدخول بنجاح!* \n🛡️ نظام Anti-AFK والحماية نشط الآن.`);
             
             let tick = 0;
             afkIntervals[userId] = setInterval(() => {
                 if (activeClients[userId]) {
                     tick++;
-                    // محاكاة قفز ودوران
+                    // حركة قفز ودوران خفيفة لإثبات النشاط
                     activeClients[userId].queue('player_auth_input', {
-                        pitch: 0, yaw: (tick * 15) % 360, 
+                        pitch: 0, yaw: (tick * 10) % 360, 
                         position: { x: 0, y: 0, z: 0 }, move_vector: { x: 0, z: 0 },
-                        head_yaw: (tick * 15) % 360, input_data: { jump_down: tick % 2 === 0 }, 
+                        head_yaw: (tick * 10) % 360, input_data: { jump_down: tick % 2 === 0 }, 
                         input_mode: 'touch', play_mode: 'normal'
                     });
                 }
             }, 10000);
         });
 
+        // حماية الانهيار
         activeClients[userId].on('error', (err) => {
+            console.log(`[Shield] Error: ${err.message}`);
             delete activeClients[userId];
             clearInterval(afkIntervals[userId]);
         });
 
-    } catch (e) { ctx.reply("❌ فشل الاتصال بالسيرفر."); }
+    } catch (e) { ctx.reply("❌ فشل الدخول للسيرفر. تأكد من البيانات."); }
 });
 
 bot.action('home', (ctx) => ctx.editMessageText('*مرحباً بك، أنا هنا لحماية سيرفرك من قطع الاتصال* 🛡️', { parse_mode: 'Markdown', ...mainUI }));
@@ -168,4 +164,4 @@ bot.action(/^del_(\d+)$/, (ctx) => {
 });
 
 bot.launch();
-console.log('🚀 نظام الحماية بالهوية الثابتة يعمل الآن!');
+console.log('🚀 نظام MaxBlack Ultra v3 جاهز للعمل!');
