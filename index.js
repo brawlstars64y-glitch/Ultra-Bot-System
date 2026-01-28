@@ -3,10 +3,10 @@ const bedrock = require('bedrock-protocol');
 const editJsonFile = require("edit-json-file");
 const http = require('http');
 
-// نظام منع تجمد الاستضافة
+// 🌐 نظام الاستدامة ومنع التجمد
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end("MaxBlack V6: Aternos Shield Active ✅");
+    res.end("نظام MaxBlack Ultra: المحاكاة البشرية تعمل بنجاح ✅");
 }).listen(process.env.PORT || 3000);
 
 const token = '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU';
@@ -17,7 +17,7 @@ bot.use(session());
 let clients = {};
 let intervals = {};
 
-// الواجهة الملكية (الترتيب الذي طلبته)
+// 🎨 الواجهة الملكية الفخمة (الترتيب المعتمد)
 const royalUI = Markup.inlineKeyboard([
     [Markup.button.callback('🛡️ تـأمين سـيرفر جـديد', 'add_new')], 
     [Markup.button.callback('🔱 مـنـصة الـتـحـكـم', 'dashboard')], 
@@ -26,23 +26,23 @@ const royalUI = Markup.inlineKeyboard([
 ]);
 
 bot.start((ctx) => {
-    ctx.replyWithMarkdown(`*🔱 محرك V6 مخصص لسيرفرات Aternos*\n_تم ضبط الإعدادات لتتوافق مع وضع (مكركة) ✅_`, royalUI);
+    ctx.replyWithMarkdown(`*🔱 مرحباً بك في نظام MaxBlack Ultra*\n_تم تفعيل بروتوكول المحاكاة الشامل لتخطي الطرد نهائياً._`, royalUI);
 });
 
-// المميزات
+// ✅ ميزة المميزات (تعمل الآن 100%)
 bot.action('features', (ctx) => {
     ctx.answerCbQuery().catch(() => {});
-    ctx.editMessageText(`💎 *مميزات V6 المخصصة:* \n\n• تخطي طرد Aternos الفوري ✅\n• دعم وضع "مكركة" بالكامل 🛡️\n• محاكاة لاعب حقيقي (Android) 📱`, {
+    ctx.editMessageText(`💎 *مميزات Ultra المتقدمة:* \n\n• محاكاة أجهزة Xbox/Mobile لضمان الدخول 🎮\n• نظام الرد على الـ Latency (تخطي طرد السرعة) ⚡\n• منع طرد الـ Idle بحركات عشوائية 🔄\n• توافق تام مع سيرفرات Aternos المكركة 🛡️`, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([[Markup.button.callback('🔙 عودة', 'home')]])
     });
 });
 
-// إضافة سيرفر
+// 🛠️ إضافة سيرفر
 bot.action('add_new', (ctx) => {
     ctx.answerCbQuery().catch(() => {});
     ctx.session = { step: 'host' };
-    ctx.reply('📡 *أرسل IP السيرفر (بدون البورت):*');
+    ctx.reply('📡 *أرسل عنوان السيرفر (IP):*');
 });
 
 bot.on('text', async (ctx) => {
@@ -50,41 +50,41 @@ bot.on('text', async (ctx) => {
     if (ctx.session?.step === 'host') {
         ctx.session.h = ctx.message.text.trim();
         ctx.session.step = 'port';
-        ctx.reply('🔢 *أرسل البورت (Port):*');
+        ctx.reply('🔢 *أرسل منفذ السيرفر (Port):*');
     } else if (ctx.session?.step === 'port') {
         let s = db.get(`${uid}.s`) || [];
         s.push({ host: ctx.session.h, port: ctx.message.text.trim(), n: "MaxBlack_Bot" });
         db.set(`${uid}.s`, s);
         ctx.session = null;
-        ctx.reply('✅ *تم الحفظ! شغل البوت من المنصة الآن.*', royalUI);
+        ctx.reply('✅ *تم تسجيل السيرفر بنجاح!*', royalUI);
     }
 });
 
-// المنصة
+// 📊 المنصة
 bot.action('dashboard', (ctx) => {
     ctx.answerCbQuery().catch(() => {});
     const srvs = db.get(`${ctx.from.id}.s`) || [];
-    if (srvs.length === 0) return ctx.reply("⚠️ لا يوجد سيرفرات!", royalUI);
+    if (srvs.length === 0) return ctx.reply("⚠️ لا توجد سيرفرات!", royalUI);
     const buttons = srvs.map((s, i) => [Markup.button.callback(`🌍 ${s.host}`, `manage_${i}`)]);
     buttons.push([Markup.button.callback('🔙 رجوع', 'home')]);
-    ctx.editMessageText('🔱 *منصة التحكم:*', Markup.inlineKeyboard(buttons));
+    ctx.editMessageText('🔱 *منصة التحكم الذكي:*', Markup.inlineKeyboard(buttons));
 });
 
 bot.action(/^manage_(\d+)$/, (ctx) => {
     ctx.answerCbQuery().catch(() => {});
     const id = ctx.match[1];
     const s = db.get(`${ctx.from.id}.s`)[id];
-    const active = clients[ctx.from.id] ? "متصل ✅" : "مفصول 🔴";
-    ctx.editMessageText(`🛡️ *إدارة السيرفر:* \n📍 \`${s.host}:${s.port}\` \n📊 الحالة: ${active}`, {
+    const active = clients[ctx.from.id] ? "نـشـط ✅" : "مـعـطل 🔴";
+    ctx.editMessageText(`🛡️ *إدارة الحماية:* \n📍 \`${s.host}:${s.port}\` \n📊 الحالة: ${active}`, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-            [Markup.button.callback(clients[ctx.from.id] ? '🛑 إيقاف' : '⚡ تشغيل الاقتحام', `toggle_${id}`)],
+            [Markup.button.callback(clients[ctx.from.id] ? '🛑 إيقاف البوت' : '⚡ تفعيل الاقتحام', `toggle_${id}`)],
             [Markup.button.callback('🗑️ حذف', `del_${id}`), Markup.button.callback('🔙', 'dashboard')]
         ])
     });
 });
 
-// 🔥 المحرك V6 (Aternos Destroyer)
+// 🔥 المحرك الخارق (Ultra Simulation Engine)
 bot.action(/^toggle_(\d+)$/, async (ctx) => {
     ctx.answerCbQuery().catch(() => {});
     const id = ctx.match[1];
@@ -95,11 +95,11 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
         clients[uid].close();
         clearInterval(intervals[uid]);
         delete clients[uid];
-        return ctx.reply("🛑 *تم إخراج البوت.*");
+        return ctx.reply("🛑 *تم سحب البوت بنجاح.*");
     }
 
     try {
-        ctx.reply("⏳ جاري الاقتحام وتخطي حماية Aternos...");
+        ctx.reply("⏳ جاري محاكاة الهوية واقتحام السيرفر...");
         
         clients[uid] = bedrock.createClient({
             host: s.host,
@@ -109,17 +109,21 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
             version: false, // اكتشاف تلقائي للإصدار
             skipPing: false,
             connectTimeout: 60000,
-            profiles: { platform: 1 } // محاكاة Android لزيادة القبول
+            // 🛡️ سر البوت الناجح: محاكاة منصة PlayStation/Xbox لزيادة الثقة
+            profiles: {
+                platform: 2, // محاكاة تامة لمنصة ألعاب
+                deviceModel: 'PlayStation 5' 
+            }
         });
 
-        // 🛡️ السر: الرد الفوري على كل طلبات السيرفر
         clients[uid].on('packet', (packet, meta) => {
+            // الرد الفوري على حزم الموارد (حل مشكلة Left game)
             if (meta.name === 'resource_packs_info') {
                 clients[uid].queue('resource_pack_client_response', { 
                     response_status: 'completed', resource_pack_ids: [] 
                 });
             }
-            // منع الـ Kick بسبب اللاغ أو عدم الاستجابة
+            // الرد على حزم الشبكة لمنع طرد "التعليق"
             if (meta.name === 'network_stack_latency') {
                 clients[uid].queue('network_stack_latency', { 
                     server_time: packet.server_time, needs_response: false 
@@ -128,20 +132,24 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
         });
 
         clients[uid].on('spawn', () => {
-            ctx.reply(`✅ *نجح الاتصال! البوت داخل سيرفر Aternos الآن.*`);
+            ctx.reply(`🚀 *نجح الاختراق! البوت الآن لاعب حقيقي داخل السيرفر.*`);
+            
+            // نظام Anti-AFK حركي (قفز وتدوير) ليظهر كلاعب حقيقي
             intervals[uid] = setInterval(() => {
                 if (clients[uid]) {
-                    // حركة وهمية مستمرة للبقاء
                     clients[uid].queue('player_auth_input', {
-                        pitch: 0, yaw: 0, position: { x: 0, y: 0, z: 0 }, move_vector: { x: 0, z: 0 },
-                        head_yaw: 0, input_data: { jump_down: true }, input_mode: 'touch', play_mode: 'normal'
+                        pitch: 0, yaw: Math.random() * 360, 
+                        position: { x: 0, y: 0, z: 0 }, 
+                        move_vector: { x: 0, z: 0 },
+                        head_yaw: Math.random() * 360, 
+                        input_data: { jump_down: true }, 
+                        input_mode: 'touch', play_mode: 'normal'
                     });
                 }
             }, 10000);
         });
 
         clients[uid].on('error', (err) => {
-            console.log("Aternos Error: " + err.message);
             delete clients[uid];
             clearInterval(intervals[uid]);
         });
@@ -151,7 +159,7 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
 
 bot.action('home', (ctx) => {
     ctx.answerCbQuery().catch(() => {});
-    ctx.editMessageText('*🔱 نظام MaxBlack Infinity V6*', { parse_mode: 'Markdown', ...royalUI });
+    ctx.editMessageText('*🔱 نظام MaxBlack Ultra جاهز للخدمة*', { parse_mode: 'Markdown', ...royalUI });
 });
 
 bot.action(/^del_(\d+)$/, (ctx) => {
@@ -162,8 +170,7 @@ bot.action(/^del_(\d+)$/, (ctx) => {
     ctx.editMessageText("✅ تم الحذف.", Markup.inlineKeyboard([[Markup.button.callback('🔙', 'dashboard')]]));
 });
 
-// درع الحماية من الانهيار
-process.on('uncaughtException', (err) => { console.error('Shielded:', err); });
+process.on('uncaughtException', (err) => { console.error('Safe Shield:', err); });
 
 bot.launch({ dropPendingUpdates: true });
-console.log('🚀 V6 Aternos Edition is Online!');
+console.log('🚀 MaxBlack Ultra is Online!');
