@@ -33,24 +33,11 @@ async function checkSub(ctx) {
     return true;
 }
 
-// 🏠 الواجهة الرئيسية (مثل الصورة تماماً)
+// 🏠 الواجهة الرئيسية
 const mainMenuButtons = Markup.inlineKeyboard([
     [Markup.button.callback('🎮 سيرفراتي', 'my_servers'), Markup.button.callback('➕ إضافة سيرفر', 'add_server')],
     [Markup.button.callback('❓ طريقة الاستخدام', 'how_to_use')]
 ]);
-
-// ⚙️ لوحة تحكم السيرفر (نسخة طبق الأصل من الصور)
-const serverPanel = (index, s) => {
-    const status = activeClients[ctx.from.id] ? "شغال ✅" : "متوقف 🔴";
-    return Markup.inlineKeyboard([
-        [Markup.button.callback('▶️ تشغيل البوت', `start_srv_${index}`)],
-        [Markup.button.callback('ℹ️ معلومات حية', `info_${index}`), Markup.button.callback('✏️ تغيير اسم البوت', `rename_${index}`)],
-        [Markup.button.callback('⏱️ مدة التشغيل', `uptime_${index}`)],
-        [Markup.button.callback('🔔 الإشعارات: مفعلة', `notif_${index}`), Markup.button.callback('🔄 التشغيل التلقائي: معطل', `auto_${index}`)],
-        [Markup.button.callback('🗑️ حذف السيرفر', `del_srv_${index}`)],
-        [Markup.button.callback('🔙 رجوع لسيرفراتي', 'my_servers')]
-    ]);
-};
 
 // 🚀 بداية البوت
 tgBot.start(async (ctx) => {
@@ -73,15 +60,17 @@ tgBot.action('start_verify', async (ctx) => {
     }
 });
 
-// 📁 إدارة السيرفرات
+// 📁 عرض السيرفرات (تم إصلاح الربط هنا)
 tgBot.action('my_servers', async (ctx) => {
     const servers = db.get(`${ctx.from.id}.servers`) || [];
     if (servers.length === 0) return ctx.answerCbQuery("❌ لا توجد سيرفرات مضافة!", { show_alert: true });
     
     const kb = servers.map((s, i) => [Markup.button.callback(`🌐 ${s.host}:${s.port}`, `manage_${i}`)]);
+    kb.push([Markup.button.callback('🔙 رجوع', 'main_menu')]);
     ctx.editMessageText('🎮 *قائمة سيرفراتك المحفوظة:*', { parse_mode: 'Markdown', ...Markup.inlineKeyboard(kb) });
 });
 
+// ⚙️ لوحة تحكم السيرفر (مثل الصورة تماماً)
 tgBot.action(/^manage_(\d+)$/, (ctx) => {
     const index = ctx.match[1];
     const s = db.get(`${ctx.from.id}.servers`)[index];
@@ -89,21 +78,30 @@ tgBot.action(/^manage_(\d+)$/, (ctx) => {
     
     ctx.editMessageText(`*إدارة ${parseInt(index)+1} - S*\n--------------------------\n🏷️ *name_label: S - ${parseInt(index)+1}*\n🌐 *العنوان:* \`${s.host}:${s.port}\`\n📋 *نوع السيرفر: BEDROCK*\n🤖 *اسم البوت:* \`${s.bot_name}\`\n📊 *الحالة:* ${status}`, {
         parse_mode: 'Markdown',
-        ...serverPanel(index, s)
+        ...Markup.inlineKeyboard([
+            [Markup.button.callback('▶️ تشغيل البوت', `start_srv_${index}`)],
+            [Markup.button.callback('ℹ️ معلومات حية', `info_${index}`), Markup.button.callback('✏️ تغيير اسم البوت', `rename_${index}`)],
+            [Markup.button.callback('⏱️ مدة التشغيل', `uptime_${index}`)],
+            [Markup.button.callback('🔔 الإشعارات: مفعلة', `notif_${index}`), Markup.button.callback('🔄 التشغيل التلقائي: معطل', `auto_${index}`)],
+            [Markup.button.callback('🗑️ حذف السيرفر', `del_srv_${index}`)],
+            [Markup.button.callback('🔙 رجوع لسيرفراتي', 'my_servers')]
+        ])
     });
 });
 
-// ▶️ التشغيل ومانع الطرد (Anti-AFK)
+// ▶️ نظام التشغيل و Anti-AFK
 tgBot.action(/^start_srv_(\d+)$/, async (ctx) => {
     const index = ctx.match[1];
     const userId = ctx.from.id;
     const s = db.get(`${userId}.servers`)[index];
 
+    ctx.answerCbQuery("⏳ جاري الاتصال...");
+    
     try {
         if (activeClients[userId]) activeClients[userId].close();
         if (afkIntervals[userId]) clearInterval(afkIntervals[userId]);
 
-        // حماية من خطأ العنوان الذي يظهر في الصورة (Invalid connection address)
+        // تنظيف العنوان من أي بروتوكول زائد
         const cleanHost = s.host.replace(/https?:\/\//, '').split('/')[0];
 
         activeClients[userId] = bedrock.createClient({
@@ -111,24 +109,23 @@ tgBot.action(/^start_srv_(\d+)$/, async (ctx) => {
         });
 
         activeClients[userId].on('spawn', () => {
-            ctx.reply(`✅ *البوت [ ${s.bot_name} ] دخل السيرفر بنجاح! تم تفعيل مانع الطرد 🛡️*`);
-            
-            // نظام Anti-AFK
+            ctx.reply(`✅ تم دخول السيرفر! نظام Anti-AFK نشط الآن 🛡️`);
             afkIntervals[userId] = setInterval(() => {
                 if (activeClients[userId]) {
                     activeClients[userId].queue('text', {
                         type: 'chat', needs_translation: false, source_name: s.bot_name,
-                        xuid: '', platform_chat_id: '', message: '🛡️ MaxBlack System Active'
+                        xuid: '', platform_chat_id: '', message: '🛡️ Anti-AFK Active'
                     });
                 }
-            }, 60000);
+            }, 50000);
         });
 
         activeClients[userId].on('error', (err) => {
-            ctx.reply(`❌ *خطأ:* ${err.message}`);
+            ctx.reply(`❌ حدث خطأ: السيرفر مغلق أو العنوان غير صحيح.`);
+            if (activeClients[userId]) activeClients[userId].close();
             clearInterval(afkIntervals[userId]);
         });
-    } catch (e) { ctx.reply("❌ حدث خطأ في الاتصال."); }
+    } catch (e) { ctx.reply("❌ فشل تشغيل البوت."); }
 });
 
 // ➕ إضافة سيرفر
@@ -139,16 +136,25 @@ tgBot.action('add_server', (ctx) => {
 
 tgBot.on('text', async (ctx) => {
     if (db.get(`${ctx.from.id}.state`) === 'wait') {
-        const parts = ctx.message.text.split(':');
-        if (parts.length < 2) return ctx.reply("⚠️ التنسيق خاطئ! استخدمي IP:PORT");
+        const msg = ctx.message.text;
+        if (!msg.includes(':')) return ctx.reply("⚠️ استخدمي التنسيق الصحيح IP:PORT");
         
+        const [h, p] = msg.split(':');
         let srvs = db.get(`${ctx.from.id}.servers`) || [];
-        srvs.push({ host: parts[0].trim(), port: parts[1].trim(), bot_name: "MaxBlack" });
+        srvs.push({ host: h.trim(), port: p.trim(), bot_name: "MaxBlack" });
         db.set(`${ctx.from.id}.servers`, srvs);
         db.set(`${ctx.from.id}.state`, null);
-        ctx.reply("✅ تم إضافة السيرفر بنجاح!", mainMenuButtons);
+        ctx.reply("✅ تم الحفظ! اذهبي إلى 'سيرفراتي' للتشغيل.", mainMenuButtons);
     }
 });
 
+// 🗑️ حذف السيرفر
+tgBot.action(/^del_srv_(\d+)$/, (ctx) => {
+    let srvs = db.get(`${ctx.from.id}.servers`);
+    srvs.splice(ctx.match[1], 1);
+    db.set(`${ctx.from.id}.servers`, srvs);
+    ctx.editMessageText("✅ تم حذف السيرفر بنجاح.", Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'my_servers')]]));
+});
+
 tgBot.launch();
-console.log('🚀 لوحة تحكم Ultra-Bot الاحترافية تعمل الآن!');
+console.log('🚀 نظام Ultra-Bot المصلح يعمل الآن!');
