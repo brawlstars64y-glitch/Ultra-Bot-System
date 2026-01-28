@@ -1,29 +1,31 @@
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf, Markup, session } = require('telegraf');
 const bedrock = require('bedrock-protocol');
 const editJsonFile = require("edit-json-file");
 const http = require('http');
 
-// 🌐 سيرفر Railway لمنع توقف البوت وحماية الانهيار
+// 🌐 نظام حماية الانهيار والبقاء متصلاً على Railway
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.write("💎 نظام Ultra-Bot الاحترافي قيد التشغيل 24/7");
-    res.end();
+    res.end("نظام MaxBlack يعمل بأعلى كفاءة 24/7 💎");
 }).listen(process.env.PORT || 3000);
 
-const token = process.env.BOT_TOKEN || '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU';
+const token = '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU';
 const db = editJsonFile(`${__dirname}/database.json`, { autosave: true });
-const tgBot = new Telegraf(token);
+const bot = new Telegraf(token);
 
-const CHANNELS = [
-    { id: '@minecrafmodss12', link: 'https://t.me/minecrafmodss12' },
-    { id: '@aternosbot24', link: 'https://t.me/aternosbot24' }
-];
+bot.use(session());
 
 let activeClients = {};
 let afkIntervals = {};
 let startTime = {};
 
-// 🔍 فحص الاشتراك الإجباري
+// 📢 القنوات المطلوبة للاشتراك
+const CHANNELS = [
+    { id: '@minecrafmodss12', link: 'https://t.me/minecrafmodss12' },
+    { id: '@aternosbot24', link: 'https://t.me/aternosbot24' }
+];
+
+// 🔍 فحص الاشتراك
 async function checkSub(ctx) {
     for (const ch of CHANNELS) {
         try {
@@ -34,111 +36,125 @@ async function checkSub(ctx) {
     return true;
 }
 
-// 🏠 القائمة الرئيسية (مثل صورة image_da9f19.png)
+// 🏠 القائمة الرئيسية (بصيغة المذكر)
 const mainMenu = Markup.inlineKeyboard([
     [Markup.button.callback('🎮 سيرفراتي', 'my_servers'), Markup.button.callback('➕ إضافة سيرفر', 'add_server')],
     [Markup.button.callback('❓ طريقة الاستخدام', 'how_to_use')]
 ]);
 
-tgBot.start(async (ctx) => {
+bot.start(async (ctx) => {
     if (await checkSub(ctx)) {
-        ctx.replyWithMarkdown(`*• مرحباً بك في بوت بلاير* 🔮\n*عملي هو ابقاء سيرفرك الخاص بـ ماين كرافت شغال بدون توقف 24/7* 🔔`, mainMenu);
+        ctx.replyWithMarkdown(`*• مرحباً بك يا بطل في بوت بلاير* 🔮\n*مهمتي إبقاء سيرفرك شغالاً بدون توقف 24/7 مع حماية كاملة* 🔔`, mainMenu);
     } else {
-        ctx.reply('⚠️ *يجب الاشتراك أولاً لتفعيل البوت:*', Markup.inlineKeyboard([
+        ctx.reply('⚠️ *يجب عليك الاشتراك في القنوات أولاً لتفعيل البوت:*', Markup.inlineKeyboard([
             [Markup.button.url('📢 القناة 1', CHANNELS[0].link), Markup.button.url('📢 القناة 2', CHANNELS[1].link)],
-            [Markup.button.callback('✅ تم الاشتراك', 'start_verify')]
+            [Markup.button.callback('✅ تم الاشتراك', 'verify_sub')]
         ]));
     }
 });
 
-// ⚙️ إدارة السيرفرات وتشغيل نظام الحماية
-tgBot.action(/^manage_(\d+)$/, (ctx) => {
-    const index = ctx.match[1];
-    const userId = ctx.from.id;
-    const s = db.get(`${userId}.servers`)[index];
-    const isOnline = activeClients[userId] ? "شغال ✅" : "متوقف 🔴";
-    const notif = db.get(`${userId}.notif`) !== false ? "مفعلة 🔔" : "معطلة 🔕";
-    const auto = db.get(`${userId}.auto`) === true ? "مفعل ✅" : "معطل ❌";
+bot.action('verify_sub', async (ctx) => {
+    if (await checkSub(ctx)) {
+        ctx.editMessageText(`*• مرحباً بك يا بطل في بوت بلاير* 🔮\n*اختر ما تريد من القائمة أدناه:*`, { parse_mode: 'Markdown', ...mainMenu });
+    } else {
+        ctx.answerCbQuery('❌ اشترك في القنوات أولاً!', { show_alert: true });
+    }
+});
 
-    ctx.editMessageText(`*إدارة ${parseInt(index)+1} - S*\n--------------------------\n🏷️ *name_label: S - ${parseInt(index)+1}*\n🌐 *العنوان:* \`${s.host}:${s.port}\`\n📋 *نوع السيرفر: BEDROCK*\n🤖 *اسم البوت:* \`${s.bot_name}\`\n📊 *الحالة:* ${isOnline}`, {
+// ➕ إضافة سيرفر (نظام مبرمج بالكامل)
+bot.action('add_server', (ctx) => {
+    ctx.session = { state: 'get_host' };
+    ctx.reply('📥 *أرسل الآن عنوان السيرفر (IP):*');
+});
+
+bot.on('text', async (ctx) => {
+    const userId = ctx.from.id;
+    const state = ctx.session?.state;
+
+    if (state === 'get_host') {
+        ctx.session.host = ctx.message.text;
+        ctx.session.state = 'get_port';
+        ctx.reply('🔢 *أرسل الآن البورت (Port):*');
+    } else if (state === 'get_port') {
+        ctx.session.port = ctx.message.text;
+        ctx.session.state = 'get_name';
+        ctx.reply('🤖 *أرسل الاسم الذي تريده للبوت:*');
+    } else if (state === 'get_name') {
+        let servers = db.get(`${userId}.servers`) || [];
+        servers.push({ host: ctx.session.host, port: ctx.session.port, bot_name: ctx.message.text });
+        db.set(`${userId}.servers`, servers);
+        ctx.session.state = null;
+        ctx.reply('✅ *تم حفظ سيرفرك بنجاح! اذهب لقائمة سيرفراتي لتشغيله.*', mainMenu);
+    }
+});
+
+// 🎮 عرض السيرفرات والتحكم بها
+bot.action('my_servers', (ctx) => {
+    const servers = db.get(`${ctx.from.id}.servers`) || [];
+    if (servers.length === 0) return ctx.answerCbQuery("❌ لا توجد سيرفرات مضافة!", { show_alert: true });
+    
+    const kb = servers.map((s, i) => [Markup.button.callback(`🌐 ${s.host}:${s.port}`, `manage_${i}`)]);
+    kb.push([Markup.button.callback('🔙 رجوع', 'verify_sub')]);
+    ctx.editMessageText('🎮 *قائمة سيرفراتك المحفوظة:*', { parse_mode: 'Markdown', ...Markup.inlineKeyboard(kb) });
+});
+
+bot.action(/^manage_(\d+)$/, (ctx) => {
+    const index = ctx.match[1];
+    const s = db.get(`${ctx.from.id}.servers`)[index];
+    const isOnline = activeClients[ctx.from.id] ? "شغال ✅" : "متوقف 🔴";
+
+    ctx.editMessageText(`*إدارة السيرفر - لوحة التحكم*\n--------------------------\n🌐 *العنوان:* \`${s.host}:${s.port}\`\n🤖 *اسم البوت:* \`${s.bot_name}\`\n📊 *الحالة:* ${isOnline}`, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-            [Markup.button.callback(activeClients[userId] ? '🛑 إيقاف البوت' : '▶️ تشغيل البوت', `toggle_srv_${index}`)],
-            [Markup.button.callback('ℹ️ معلومات حية', `info_${index}`), Markup.button.callback('✏️ تغيير اسم البوت', `rename_${index}`)],
-            [Markup.button.callback('⏱️ مدة التشغيل', `uptime_${index}`)],
-            [Markup.button.callback(`🔔 الإشعارات: ${notif}`, `notif_btn_${index}`), Markup.button.callback(`🔄 تلقائي: ${auto}`, `auto_btn_${index}`)],
-            [Markup.button.callback('💬 إرسال رسالة', `send_msg_${index}`)],
-            [Markup.button.callback('🗑️ حذف السيرفر', `del_srv_${index}`)],
-            [Markup.button.callback('🔙 رجوع لسيرفراتي', 'my_servers')]
+            [Markup.button.callback(activeClients[ctx.from.id] ? '🛑 إيقاف البوت' : '▶️ تشغيل البوت', `toggle_${index}`)],
+            [Markup.button.callback('🗑️ حذف السيرفر', `del_${index}`)],
+            [Markup.button.callback('🔙 رجوع', 'my_servers')]
         ])
     });
 });
 
-// ▶️ التشغيل مع Anti-AFK وحماية الانهيار (Crash Protection)
-tgBot.action(/^toggle_srv_(\d+)$/, async (ctx) => {
+// 🛡️ نظام التشغيل مع Anti-AFK وحماية الانهيار
+bot.action(/^toggle_(\d+)$/, async (ctx) => {
     const index = ctx.match[1];
     const userId = ctx.from.id;
     const s = db.get(`${userId}.servers`)[index];
 
     if (activeClients[userId]) {
         activeClients[userId].close();
-        delete activeClients[userId];
         clearInterval(afkIntervals[userId]);
-        delete startTime[userId];
-        return ctx.reply("🔴 تم إيقاف البوت وفصل الاتصال.");
+        delete activeClients[userId];
+        return ctx.reply("🔴 تم إيقاف البوت بنجاح.");
     }
 
     try {
-        // 🛡️ حماية الانهيار: تنظيف العنوان ومنع الروابط الخاطئة (image_f6bf19.png)
-        const cleanHost = s.host.replace(/https?:\/\//, '').split('/')[0];
-
+        // حماية الانهيار: تنظيف العنوان
+        const host = s.host.trim().replace(/https?:\/\//, '').split('/')[0];
+        
         activeClients[userId] = bedrock.createClient({
-            host: cleanHost, port: parseInt(s.port), username: s.bot_name, offline: true, version: '1.21.130'
+            host: host, port: parseInt(s.port), username: s.bot_name, offline: true, version: '1.21.130'
         });
 
         activeClients[userId].on('spawn', () => {
-            startTime[userId] = Date.now();
-            ctx.reply(`✅ تم دخول السيرفر! نظام Anti-AFK نشط الآن لضمان عدم الطرد 🛡️`);
+            ctx.reply(`✅ *البوت دخل السيرفر! تم تفعيل نظام Anti-AFK لحمايتك من الطرد 🛡️*`);
             
-            // 🔄 نظام Anti-AFK المطور
+            // نظام Anti-AFK
             afkIntervals[userId] = setInterval(() => {
                 if (activeClients[userId]) {
-                    activeClients[userId].queue('text', { type: 'chat', needs_translation: false, source_name: s.bot_name, xuid: '', platform_chat_id: '', message: '🛡️ Ultra-System Protection' });
+                    activeClients[userId].queue('text', { type: 'chat', needs_translation: false, source_name: s.bot_name, xuid: '', platform_chat_id: '', message: '🛡️ MaxBlack Active' });
                 }
             }, 50000);
         });
 
         activeClients[userId].on('error', (err) => {
-            if (db.get(`${userId}.notif`) !== false) ctx.reply(`❌ خطأ اتصال: السيرفر مغلق أو العنوان غير صحيح.`);
+            delete activeClients[userId];
             clearInterval(afkIntervals[userId]);
-            if (db.get(`${userId}.auto`) === true) {
-                setTimeout(() => ctx.reply("🔄 التشغيل التلقائي يحاول إعادة الاتصال..."), 10000);
-            }
         });
-
-    } catch (e) { ctx.reply("❌ حدث خطأ غير متوقع أثناء التشغيل."); }
+    } catch (e) { ctx.reply("❌ حدث خطأ في الاتصال، تأكد من بياناتك."); }
 });
 
-// 📥 إدارة المدخلات (إرسال رسائل وتغيير الاسم)
-tgBot.on('text', async (ctx) => {
-    const userId = ctx.from.id;
-    const state = db.get(`${userId}.state`);
-    if (!state) return;
-
-    if (state.startsWith('rename_')) {
-        const index = state.split('_')[1];
-        let srvs = db.get(`${userId}.servers`);
-        srvs[index].bot_name = ctx.message.text;
-        db.set(`${userId}.servers`, srvs);
-        ctx.reply(`✅ تم تغيير اسم البوت إلى: ${ctx.message.text}`);
-    } else if (state.startsWith('msg_')) {
-        if (activeClients[userId]) {
-            activeClients[userId].queue('text', { type: 'chat', needs_translation: false, source_name: activeClients[userId].options.username, xuid: '', platform_chat_id: '', message: ctx.message.text });
-            ctx.reply("✅ أرسل البوت رسالتك داخل اللعبة.");
-        } else ctx.reply("❌ البوت غير متصل حالياً!");
-    }
-    db.set(`${userId}.state`, null);
+bot.action('how_to_use', (ctx) => {
+    ctx.replyWithMarkdown(`*📖 طريقة الاستخدام يا بطل:*\n\n1️⃣ اضغط "إضافة سيرفر" وأدخل البيانات.\n2️⃣ اذهب إلى "سيرفراتي" واختر سيرفرك.\n3️⃣ اضغط "تشغيل البوت" وسيتم تفعيل حماية Anti-AFK تلقائياً.`, mainMenu);
 });
 
-tgBot.launch();
-console.log('🚀 نظام Ultra-Bot الاحترافي يعمل بكامل قوته!');
+bot.launch();
+console.log("🚀 Ultra Bot Started in Male Format!");
