@@ -1,160 +1,149 @@
-const { Telegraf, Markup, session } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 const bedrock = require('bedrock-protocol');
 const editJsonFile = require("edit-json-file");
 const http = require('http');
 
-// 🌐 نظام حماية الانهيار والبقاء متصلاً على Railway
+// 🌐 سيرفر Railway لضمان العمل 24 ساعة
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end("نظام MaxBlack يعمل بأعلى كفاءة 24/7 💎");
+    res.write("💎 نظام MaxBlack يعمل بأعلى كفاءة");
+    res.end();
 }).listen(process.env.PORT || 3000);
 
-const token = '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU';
+// 🛡️ إعدادات البوت وقاعدة البيانات
+const token = process.env.BOT_TOKEN || '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU';
 const db = editJsonFile(`${__dirname}/database.json`, { autosave: true });
-const bot = new Telegraf(token);
+const tgBot = new Telegraf(token);
 
-bot.use(session());
-
-let activeClients = {};
-let afkIntervals = {};
-let startTime = {};
-
-// 📢 القنوات المطلوبة للاشتراك
 const CHANNELS = [
     { id: '@minecrafmodss12', link: 'https://t.me/minecrafmodss12' },
     { id: '@aternosbot24', link: 'https://t.me/aternosbot24' }
 ];
+const DEVELOPER_LINK = 'https://t.me/uuuaaw';
 
-// 🔍 فحص الاشتراك
-async function checkSub(ctx) {
-    for (const ch of CHANNELS) {
+let activeClients = {};
+
+// 🔍 فحص الاشتراك الإجباري
+async function checkAllSubscriptions(ctx) {
+    for (const channel of CHANNELS) {
         try {
-            const member = await ctx.telegram.getChatMember(ch.id, ctx.from.id);
-            if (!['member', 'administrator', 'creator'].includes(member.status)) return false;
+            const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
+            const status = ['member', 'administrator', 'creator'];
+            if (!status.includes(member.status)) return false;
         } catch (e) { return false; }
     }
     return true;
 }
 
-// 🏠 القائمة الرئيسية (بصيغة المذكر)
-const mainMenu = Markup.inlineKeyboard([
-    [Markup.button.callback('🎮 سيرفراتي', 'my_servers'), Markup.button.callback('➕ إضافة سيرفر', 'add_server')],
-    [Markup.button.callback('❓ طريقة الاستخدام', 'how_to_use')]
+// ⌨️ القوائم الرئيسية
+const mainButtons = (ctx) => Markup.inlineKeyboard([
+    [Markup.button.callback('🎮 سـيـرفـراتـي المـحـفـوظـة', 'my_servers')],
+    [Markup.button.callback('➕ إضـافـة سـيـرفـر جـديـد', 'add_server')],
+    [Markup.button.callback('⚙️ إعـدادات الـنـظـام', 'settings')],
+    [Markup.button.url('👨‍💻 المـطـور (الدعم الفني)', DEVELOPER_LINK)]
 ]);
 
-bot.start(async (ctx) => {
-    if (await checkSub(ctx)) {
-        ctx.replyWithMarkdown(`*• مرحباً بك يا بطل في بوت بلاير* 🔮\n*مهمتي إبقاء سيرفرك شغالاً بدون توقف 24/7 مع حماية كاملة* 🔔`, mainMenu);
+// 🚀 أوامر البداية
+tgBot.start(async (ctx) => {
+    if (await checkAllSubscriptions(ctx)) {
+        ctx.replyWithMarkdown(`👋 *أهلاً بك يا بطل في نظام MaxBlack*`, mainButtons(ctx));
     } else {
-        ctx.reply('⚠️ *يجب عليك الاشتراك في القنوات أولاً لتفعيل البوت:*', Markup.inlineKeyboard([
-            [Markup.button.url('📢 القناة 1', CHANNELS[0].link), Markup.button.url('📢 القناة 2', CHANNELS[1].link)],
-            [Markup.button.callback('✅ تم الاشتراك', 'verify_sub')]
+        ctx.reply('⚠️ *يجب الاشتراك في القنوات لتفعيل البوت:*', Markup.inlineKeyboard([
+            [Markup.button.url('📢 القناة الأولى', CHANNELS[0].link)],
+            [Markup.button.url('📢 القناة الثانية', CHANNELS[1].link)],
+            [Markup.button.callback('✅ تم الاشتراك', 'main_menu')]
         ]));
     }
 });
 
-bot.action('verify_sub', async (ctx) => {
-    if (await checkSub(ctx)) {
-        ctx.editMessageText(`*• مرحباً بك يا بطل في بوت بلاير* 🔮\n*اختر ما تريد من القائمة أدناه:*`, { parse_mode: 'Markdown', ...mainMenu });
+tgBot.action('main_menu', async (ctx) => {
+    if (await checkAllSubscriptions(ctx)) {
+        ctx.editMessageText('🔮 *قائمة التحكم الرئيسية:*', { parse_mode: 'Markdown', ...mainButtons(ctx) });
     } else {
-        ctx.answerCbQuery('❌ اشترك في القنوات أولاً!', { show_alert: true });
+        ctx.answerCbQuery('❌ اشترك أولاً!', { show_alert: true });
     }
 });
 
-// ➕ إضافة سيرفر (نظام مبرمج بالكامل)
-bot.action('add_server', (ctx) => {
-    ctx.session = { state: 'get_host' };
-    ctx.reply('📥 *أرسل الآن عنوان السيرفر (IP):*');
-});
-
-bot.on('text', async (ctx) => {
+// 📁 نظام السيرفرات المتعددة (الحد الأقصى 3)
+tgBot.action('my_servers', async (ctx) => {
     const userId = ctx.from.id;
-    const state = ctx.session?.state;
+    const servers = db.get(`${userId}.servers`) || [];
+    if (servers.length === 0) return ctx.answerCbQuery("❌ لا توجد سيرفرات!", { show_alert: true });
 
-    if (state === 'get_host') {
-        ctx.session.host = ctx.message.text;
-        ctx.session.state = 'get_port';
-        ctx.reply('🔢 *أرسل الآن البورت (Port):*');
-    } else if (state === 'get_port') {
-        ctx.session.port = ctx.message.text;
-        ctx.session.state = 'get_name';
-        ctx.reply('🤖 *أرسل الاسم الذي تريده للبوت:*');
-    } else if (state === 'get_name') {
-        let servers = db.get(`${userId}.servers`) || [];
-        servers.push({ host: ctx.session.host, port: ctx.session.port, bot_name: ctx.message.text });
-        db.set(`${userId}.servers`, servers);
-        ctx.session.state = null;
-        ctx.reply('✅ *تم حفظ سيرفرك بنجاح! اذهب لقائمة سيرفراتي لتشغيله.*', mainMenu);
+    let keyboard = servers.map((s, i) => [Markup.button.callback(`${i + 1}. 🌐 ${s.host}:${s.port}`, `manage_srv_${i}`)]);
+    keyboard.push([Markup.button.callback('🔙 رجوع', 'main_menu')]);
+    ctx.editMessageText('🎮 *قائمة سيرفراتك (الأقصى 3):*', { parse_mode: 'Markdown', ...Markup.inlineKeyboard(keyboard) });
+});
+
+tgBot.action('add_server', (ctx) => {
+    const servers = db.get(`${ctx.from.id}.servers`) || [];
+    if (servers.length >= 3) return ctx.answerCbQuery("⚠️ وصلت للحد الأقصى (3)!", { show_alert: true });
+    ctx.reply('📥 *أرسل البيانات بصيغة (IP:PORT):*\n⚠️ *مثال:* `play.example.com:19132`');
+    db.set(`${ctx.from.id}.state`, 'waiting_srv');
+});
+
+// 📝 معالجة النصوص وحماية المدخلات
+tgBot.on('text', async (ctx) => {
+    const userId = ctx.from.id;
+    const msg = ctx.message.text;
+    if (db.get(`${userId}.state`) === 'waiting_srv') {
+        if (msg.includes('://') || msg.includes('https')) {
+            return ctx.reply("❌ *خطأ:* أرسل العنوان بدون https أو روابط!");
+        }
+        if (msg.includes(':')) {
+            const [h, p] = msg.split(':');
+            let servers = db.get(`${userId}.servers`) || [];
+            servers.push({ host: h.trim(), port: p.trim(), bot_name: "MaxBlack" });
+            db.set(`${userId}.servers`, servers);
+            db.set(`${userId}.state`, null);
+            ctx.reply(`✅ *تم حفظ السيرفر رقم ${servers.length}*`);
+        }
     }
 });
 
-// 🎮 عرض السيرفرات والتحكم بها
-bot.action('my_servers', (ctx) => {
-    const servers = db.get(`${ctx.from.id}.servers`) || [];
-    if (servers.length === 0) return ctx.answerCbQuery("❌ لا توجد سيرفرات مضافة!", { show_alert: true });
-    
-    const kb = servers.map((s, i) => [Markup.button.callback(`🌐 ${s.host}:${s.port}`, `manage_${i}`)]);
-    kb.push([Markup.button.callback('🔙 رجوع', 'verify_sub')]);
-    ctx.editMessageText('🎮 *قائمة سيرفراتك المحفوظة:*', { parse_mode: 'Markdown', ...Markup.inlineKeyboard(kb) });
-});
-
-bot.action(/^manage_(\d+)$/, (ctx) => {
+// ⚙️ إدارة السيرفرات والتشغيل بحماية Try-Catch
+tgBot.action(/^manage_srv_(\d+)$/, (ctx) => {
     const index = ctx.match[1];
     const s = db.get(`${ctx.from.id}.servers`)[index];
-    const isOnline = activeClients[ctx.from.id] ? "شغال ✅" : "متوقف 🔴";
-
-    ctx.editMessageText(`*إدارة السيرفر - لوحة التحكم*\n--------------------------\n🌐 *العنوان:* \`${s.host}:${s.port}\`\n🤖 *اسم البوت:* \`${s.bot_name}\`\n📊 *الحالة:* ${isOnline}`, {
+    ctx.editMessageText(`📊 *تحكم بالسيرفر (${parseInt(index)+1}):*\n🌐 \`${s.host}:${s.port}\`\n🤖 \`${s.bot_name}\``, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-            [Markup.button.callback(activeClients[ctx.from.id] ? '🛑 إيقاف البوت' : '▶️ تشغيل البوت', `toggle_${index}`)],
-            [Markup.button.callback('🗑️ حذف السيرفر', `del_${index}`)],
-            [Markup.button.callback('🔙 رجوع', 'my_servers')]
+            [Markup.button.callback('▶️ تشغيل', `start_srv_${index}`), Markup.button.callback('🛑 إيقاف', `stop_srv_${index}`)],
+            [Markup.button.callback('🗑️ حذف', `del_srv_${index}`), Markup.button.callback('🔙', 'my_servers')]
         ])
     });
 });
 
-// 🛡️ نظام التشغيل مع Anti-AFK وحماية الانهيار
-bot.action(/^toggle_(\d+)$/, async (ctx) => {
+tgBot.action(/^start_srv_(\d+)$/, async (ctx) => {
     const index = ctx.match[1];
     const userId = ctx.from.id;
     const s = db.get(`${userId}.servers`)[index];
-
-    if (activeClients[userId]) {
-        activeClients[userId].close();
-        clearInterval(afkIntervals[userId]);
-        delete activeClients[userId];
-        return ctx.reply("🔴 تم إيقاف البوت بنجاح.");
-    }
+    ctx.reply(`⏳ *جاري محاولة الاتصال بـ ${s.host}...*`);
 
     try {
-        // حماية الانهيار: تنظيف العنوان
-        const host = s.host.trim().replace(/https?:\/\//, '').split('/')[0];
-        
+        if (activeClients[userId]) activeClients[userId].close();
         activeClients[userId] = bedrock.createClient({
-            host: host, port: parseInt(s.port), username: s.bot_name, offline: true, version: '1.21.130'
+            host: s.host, port: parseInt(s.port), username: s.bot_name, offline: true, version: '1.21.130'
         });
-
-        activeClients[userId].on('spawn', () => {
-            ctx.reply(`✅ *البوت دخل السيرفر! تم تفعيل نظام Anti-AFK لحمايتك من الطرد 🛡️*`);
-            
-            // نظام Anti-AFK
-            afkIntervals[userId] = setInterval(() => {
-                if (activeClients[userId]) {
-                    activeClients[userId].queue('text', { type: 'chat', needs_translation: false, source_name: s.bot_name, xuid: '', platform_chat_id: '', message: '🛡️ MaxBlack Active' });
-                }
-            }, 50000);
-        });
-
+        activeClients[userId].on('spawn', () => ctx.reply(`✅ *بوتك [ ${s.bot_name} ] دخل السيرفر!*`));
         activeClients[userId].on('error', (err) => {
-            delete activeClients[userId];
-            clearInterval(afkIntervals[userId]);
+            ctx.reply(`❌ *فشل:* ${err.message.includes('https') ? 'عنوان خاطئ' : 'السيرفر مغلق'}`);
+            if (activeClients[userId]) activeClients[userId].close();
         });
-    } catch (e) { ctx.reply("❌ حدث خطأ في الاتصال، تأكد من بياناتك."); }
+    } catch (e) { ctx.reply("❌ حدث خطأ في البيانات."); }
 });
 
-bot.action('how_to_use', (ctx) => {
-    ctx.replyWithMarkdown(`*📖 طريقة الاستخدام يا بطل:*\n\n1️⃣ اضغط "إضافة سيرفر" وأدخل البيانات.\n2️⃣ اذهب إلى "سيرفراتي" واختر سيرفرك.\n3️⃣ اضغط "تشغيل البوت" وسيتم تفعيل حماية Anti-AFK تلقائياً.`, mainMenu);
+tgBot.action(/^stop_srv_(\d+)$/, (ctx) => {
+    if (activeClients[ctx.from.id]) { activeClients[ctx.from.id].close(); delete activeClients[ctx.from.id]; }
+    ctx.answerCbQuery("🛑 تم الإيقاف");
 });
 
-bot.launch();
-console.log("🚀 Ultra Bot Started in Male Format!");
+tgBot.action(/^del_srv_(\d+)$/, (ctx) => {
+    let servers = db.get(`${ctx.from.id}.servers`);
+    servers.splice(ctx.match[1], 1);
+    db.set(`${ctx.from.id}.servers`, servers);
+    ctx.editMessageText("✅ تم الحذف.", Markup.inlineKeyboard([[Markup.button.callback('🔙', 'my_servers')]]));
+});
+
+tgBot.launch({ polling: { dropPendingUpdates: true } });
+console.log('🚀 نظام MaxBlack المطور يعمل الآن!');
