@@ -1,61 +1,83 @@
+require('dotenv').config();
 const { Telegraf } = require('telegraf');
+const { exec } = require('child_process');
+const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
 
-// ⚠️ ⚠️ ⚠️ تحذير: هذا التوكن معروض للعامة - سارع بحذفه!
-// استبدل هذا بالتوكن الجديد بعد إنشائه
-const TOKEN = '8546799299:AAG4vENptWQqQSAk1m6diUVr2nR5uiP3c1g';
-
-// إنشاء البوت
-const bot = new Telegraf(TOKEN);
+let bots = [];
 
 // أمر /start
 bot.start((ctx) => {
-    ctx.reply('مرحباً! أنا بوت بسيط. أنشئني @BotFather');
+    ctx.reply(`🎮 *مرحباً بوك في نظام حماية سيرفر ماينكرافت!*
+
+🤖 *الأوامر المتاحة:*
+/start - عرض هذه الرسالة
+/startbots - تشغيل البوتات الوهمية
+/stopbots - إيقاف البوتات
+/status - حالة النظام
+/setcustom - تعيين إعدادات مخصصة
+
+⚡ *المميزات:*
+• إبقاء السيرفر مفتوح 24/7
+• بوتات وهمية لمنع إغلاق السيرفر
+• مراقبة تلقائية
+• إشعارات فورية`, { parse_mode: 'Markdown' });
 });
 
-// أمر /help
-bot.help((ctx) => {
-    ctx.reply('أرسل لي أي نص وسأرد عليك بنفس النص!');
+// تشغيل البوتات
+bot.command('startbots', (ctx) => {
+    const count = process.env.BOT_COUNT || 2;
+    
+    ctx.reply(`🚀 جاري تشغيل ${count} بوت وهمي...`);
+    
+    for (let i = 1; i <= count; i++) {
+        const botName = `${process.env.BOT_USERNAME_PREFIX}${i}`;
+        
+        exec(`node minecraftBot.js "${botName}"`, (error, stdout, stderr) => {
+            if (error) {
+                ctx.reply(`❌ خطأ في تشغيل البوت ${botName}: ${error.message}`);
+            } else {
+                bots.push(botName);
+                ctx.reply(`✅ البوت ${botName} يعمل الآن`);
+            }
+        });
+    }
 });
 
-// رد على أي رسالة نصية
-bot.on('text', (ctx) => {
-    ctx.reply(`لقد قلت: ${ctx.message.text}`);
+// حالة النظام
+bot.command('status', (ctx) => {
+    ctx.reply(`📊 *حالة النظام الحالية:*
+
+🤖 البوتات النشطة: ${bots.length}
+🔧 الحد الأقصى للبوتات: ${process.env.BOT_COUNT}
+🌐 إصدار ماينكرافت: ${process.env.VERSION}
+⏰ الوقت: ${new Date().toLocaleTimeString()}
+
+${bots.length > 0 ? '✅ النظام يعمل بشكل طبيعي' : '⚠️ لا توجد بوتات نشطة'}`, { parse_mode: 'Markdown' });
 });
 
-// أمر /time لعرض الوقت الحالي
-bot.command('time', (ctx) => {
-    const now = new Date();
-    ctx.reply(`الوقت الحالي: ${now.toLocaleString()}`);
-});
-
-// أمر /about
-bot.command('about', (ctx) => {
-    ctx.reply('أنا بوت تلجرام بسيط مكتوب بـ Node.js');
-});
-
-// معالجة الأخطاء
-bot.catch((err, ctx) => {
-    console.error(`Error for ${ctx.updateType}:`, err);
-    ctx.reply('حدث خطأ ما!');
+// إيقاف البوتات
+bot.command('stopbots', (ctx) => {
+    if (bots.length === 0) {
+        return ctx.reply('⚠️ لا توجد بوتات نشطة لإيقافها');
+    }
+    
+    ctx.reply('🛑 جاري إيقاف جميع البوتات...');
+    
+    exec('pkill -f minecraftBot.js', (error) => {
+        if (error) {
+            ctx.reply('❌ خطأ في إيقاف البوتات');
+        } else {
+            bots = [];
+            ctx.reply('✅ تم إيقاف جميع البوتات بنجاح');
+        }
+    });
 });
 
 // تشغيل البوت
-console.log('جاري تشغيل البوت...');
-bot.launch()
-    .then(() => {
-        console.log('✅ البوت يعمل بنجاح!');
-    })
-    .catch((err) => {
-        console.error('❌ فشل تشغيل البوت:', err);
-    });
-
-// إغلاق أنيق عند استقبال إشارة SIGINT
-process.once('SIGINT', () => {
-    bot.stop('SIGINT');
-    console.log('❌ تم إيقاف البوت');
+bot.launch().then(() => {
+    console.log('✅ بوت التلجرام يعمل بنجاح!');
 });
 
-process.once('SIGTERM', () => {
-    bot.stop('SIGTERM');
-    console.log('❌ تم إيقاف البوت');
-});
+// إغلاق نظيف
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
