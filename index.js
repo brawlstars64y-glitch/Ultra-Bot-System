@@ -3,7 +3,7 @@ const bedrock = require('bedrock-protocol');
 const editJsonFile = require("edit-json-file");
 const http = require('http');
 
-// 🌐 سيرفر Railway لضمان العمل 24 ساعة
+// 🌐 سيرفر Railway لضمان العمل 24 ساعة ومنع النوم
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.write("💎 نظام MaxBlack يعمل بأعلى كفاءة");
@@ -15,13 +15,16 @@ const token = process.env.BOT_TOKEN || '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQX
 const db = editJsonFile(`${__dirname}/database.json`, { autosave: true });
 const tgBot = new Telegraf(token);
 
+// 📢 قائمة القنوات (الاشتراك الثلاثي)
 const CHANNELS = [
     { id: '@minecrafmodss12', link: 'https://t.me/minecrafmodss12' },
-    { id: '@aternosbot24', link: 'https://t.me/aternosbot24' }
+    { id: '@aternosbot24', link: 'https://t.me/aternosbot24' },
+    { id: '@Player_bo', link: 'https://t.me/Player_bo' }
 ];
 const DEVELOPER_LINK = 'https://t.me/uuuaaw';
 
 let activeClients = {};
+let afkIntervals = {}; // لتخزين توقيت مانع الطرد لكل مستخدم
 
 // 🔍 فحص الاشتراك الإجباري
 async function checkAllSubscriptions(ctx) {
@@ -48,10 +51,11 @@ tgBot.start(async (ctx) => {
     if (await checkAllSubscriptions(ctx)) {
         ctx.replyWithMarkdown(`👋 *أهلاً بك يا بطل في نظام MaxBlack*`, mainButtons(ctx));
     } else {
-        ctx.reply('⚠️ *يجب الاشتراك في القنوات لتفعيل البوت:*', Markup.inlineKeyboard([
+        ctx.reply('⚠️ *يجب الاشتراك في القنوات الثلاث لتفعيل البوت:*', Markup.inlineKeyboard([
             [Markup.button.url('📢 القناة الأولى', CHANNELS[0].link)],
             [Markup.button.url('📢 القناة الثانية', CHANNELS[1].link)],
-            [Markup.button.callback('✅ تم الاشتراك', 'main_menu')]
+            [Markup.button.url('📢 القناة الثالثة', CHANNELS[2].link)],
+            [Markup.button.callback('✅ تم الاشتراك في الكل', 'main_menu')]
         ]));
     }
 });
@@ -60,11 +64,11 @@ tgBot.action('main_menu', async (ctx) => {
     if (await checkAllSubscriptions(ctx)) {
         ctx.editMessageText('🔮 *قائمة التحكم الرئيسية:*', { parse_mode: 'Markdown', ...mainButtons(ctx) });
     } else {
-        ctx.answerCbQuery('❌ اشترك أولاً!', { show_alert: true });
+        ctx.answerCbQuery('❌ لم تشترك في جميع القنوات بعد!', { show_alert: true });
     }
 });
 
-// 📁 نظام السيرفرات المتعددة (الحد الأقصى 3)
+// 📁 نظام السيرفرات المتعددة
 tgBot.action('my_servers', async (ctx) => {
     const userId = ctx.from.id;
     const servers = db.get(`${userId}.servers`) || [];
@@ -88,7 +92,7 @@ tgBot.on('text', async (ctx) => {
     const msg = ctx.message.text;
     if (db.get(`${userId}.state`) === 'waiting_srv') {
         if (msg.includes('://') || msg.includes('https')) {
-            return ctx.reply("❌ *خطأ:* أرسل العنوان بدون https أو روابط!");
+            return ctx.reply("❌ *خطأ:* أرسل العنوان بدون روابط!");
         }
         if (msg.includes(':')) {
             const [h, p] = msg.split(':');
@@ -101,7 +105,7 @@ tgBot.on('text', async (ctx) => {
     }
 });
 
-// ⚙️ إدارة السيرفرات والتشغيل بحماية Try-Catch
+// ⚙️ إدارة السيرفرات وتشغيل مانع الطرد
 tgBot.action(/^manage_srv_(\d+)$/, (ctx) => {
     const index = ctx.match[1];
     const s = db.get(`${ctx.from.id}.servers`)[index];
@@ -122,19 +126,38 @@ tgBot.action(/^start_srv_(\d+)$/, async (ctx) => {
 
     try {
         if (activeClients[userId]) activeClients[userId].close();
+        if (afkIntervals[userId]) clearInterval(afkIntervals[userId]);
+
         activeClients[userId] = bedrock.createClient({
             host: s.host, port: parseInt(s.port), username: s.bot_name, offline: true, version: '1.21.130'
         });
-        activeClients[userId].on('spawn', () => ctx.reply(`✅ *بوتك [ ${s.bot_name} ] دخل السيرفر!*`));
+
+        activeClients[userId].on('spawn', () => {
+            ctx.reply(`✅ *بوتك [ ${s.bot_name} ] دخل السيرفر بنجاح! تم تفعيل مانع الطرد 🛡️*`);
+            
+            // 🔄 نظام مانع الطرد (Anti-AFK) يرسل إشارة كل 60 ثانية
+            afkIntervals[userId] = setInterval(() => {
+                if (activeClients[userId]) {
+                    activeClients[userId].queue('text', {
+                        type: 'chat', needs_translation: false, source_name: s.bot_name,
+                        xuid: '', platform_chat_id: '', message: '🛡️ MaxBlack System Active'
+                    });
+                }
+            }, 60000);
+        });
+
         activeClients[userId].on('error', (err) => {
-            ctx.reply(`❌ *فشل:* ${err.message.includes('https') ? 'عنوان خاطئ' : 'السيرفر مغلق'}`);
+            ctx.reply(`❌ *انقطع الاتصال:* السيرفر مغلق أو قام بطرد البوت.`);
             if (activeClients[userId]) activeClients[userId].close();
+            if (afkIntervals[userId]) clearInterval(afkIntervals[userId]);
         });
     } catch (e) { ctx.reply("❌ حدث خطأ في البيانات."); }
 });
 
 tgBot.action(/^stop_srv_(\d+)$/, (ctx) => {
-    if (activeClients[ctx.from.id]) { activeClients[ctx.from.id].close(); delete activeClients[ctx.from.id]; }
+    const userId = ctx.from.id;
+    if (activeClients[userId]) { activeClients[userId].close(); delete activeClients[userId]; }
+    if (afkIntervals[userId]) { clearInterval(afkIntervals[userId]); delete afkIntervals[userId]; }
     ctx.answerCbQuery("🛑 تم الإيقاف");
 });
 
@@ -146,4 +169,4 @@ tgBot.action(/^del_srv_(\d+)$/, (ctx) => {
 });
 
 tgBot.launch({ polling: { dropPendingUpdates: true } });
-console.log('🚀 نظام MaxBlack المطور يعمل الآن!');
+console.log('🚀 نظام MaxBlack الأسطوري يعمل الآن مع مانع الطرد!');
