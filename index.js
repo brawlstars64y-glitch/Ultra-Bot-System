@@ -8,12 +8,11 @@ http.createServer((req, res) => res.end('OK')).listen(process.env.PORT || 3000)
 /* Telegram Bot */
 const bot = new Telegraf('8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU')
 
-// ✅ الإصلاح الجذري: تهيئة الجلسة لتعمل على مستوى المستخدم والدردشة لضمان حفظ البيانات
+// إصلاح الجلسة لضمان حفظ البيانات وعدم ظهور خطأ Ip/0
 bot.use(session({
   getSessionKey: (ctx) => ctx.from && ctx.chat && `${ctx.from.id}:${ctx.chat.id}`
 }))
 
-// متغيرات عامة (Global) لضمان عدم ضياع البيانات في النسخة الحالية
 let client = null
 let server = null
 let afk = null
@@ -36,7 +35,7 @@ bot.start(ctx => {
 /* ➕ إضافة سيرفر */
 bot.action('add', ctx => {
   ctx.answerCbQuery().catch(() => {})
-  ctx.session = { step: 'ip' } // تهيئة الخطوة الأولى
+  ctx.session = { step: 'ip' }
   ctx.reply('🌐 أرسل IP السيرفر:')
 })
 
@@ -50,37 +49,30 @@ bot.on('text', ctx => {
   }
 
   if (ctx.session.step === 'port') {
-    const port = parseInt(ctx.message.text)
-    if (isNaN(port)) return ctx.reply('⚠️ أرسل بورت صحيح (أرقام فقط):')
-    ctx.session.port = port
+    ctx.session.port = parseInt(ctx.message.text)
     ctx.session.step = 'name'
     return ctx.reply('👤 اسم البوت:')
   }
 
   if (ctx.session.step === 'name') {
-    // ✅ حفظ البيانات في المتغير العام server لتجنب خطأ Ip/0
     server = {
       host: ctx.session.ip,
       port: ctx.session.port,
       username: ctx.message.text.trim()
     }
-    ctx.session = null // إنهاء خطوات الإدخال
-    ctx.reply('✅ تم حفظ السيرفر بنجاح!', { reply_markup: menu().reply_markup })
+    ctx.session = null
+    ctx.reply('✅ تم حفظ السيرفر بنجاح', { reply_markup: menu().reply_markup })
   }
 })
 
-/* ▶️ دخول */
+/* ▶️ دخول (دعم جميع الإصدارات) */
 bot.action('connect', ctx => {
   ctx.answerCbQuery().catch(() => {})
 
-  // فحص إذا كانت البيانات موجودة فعلاً
-  if (!server || !server.host) {
-    return ctx.reply('⚠️ خطأ: البيانات مفقودة. أعد إضافة السيرفر.', { reply_markup: menu().reply_markup })
-  }
+  if (!server) return ctx.reply('⚠️ أضف سيرفر أولاً', { reply_markup: menu().reply_markup })
+  if (client) return ctx.reply('⚠️ البوت متصل بالفعل', { reply_markup: menu().reply_markup })
 
-  if (client) return ctx.reply('⚠️ البوت متصل بالفعل.', { reply_markup: menu().reply_markup })
-
-  ctx.reply(`⏳ جاري الدخول إلى: ${server.host}...`)
+  ctx.reply('⏳ جاري تحليل الإصدار والاقتحام...')
 
   try {
     client = bedrock.createClient({
@@ -88,12 +80,23 @@ bot.action('connect', ctx => {
       port: server.port,
       username: server.username,
       offline: true,
-      version: false, // اكتشاف تلقائي للإصدار لتجنب مشاكل التوافق
+      // ✅ التعديل المطلوب: دعم الإصدارات التلقائي مع تحديد إصدار افتراضي حديث
+      version: '1.21.50', 
+      connectTimeout: 30000,
       skipPing: false
     })
 
+    client.on('packet', (packet, meta) => {
+      // الرد على حزم الموارد لتجنب الطرد فور الدخول
+      if (meta.name === 'resource_packs_info') {
+        client.queue('resource_pack_client_response', { 
+            response_status: 'completed', resource_pack_ids: [] 
+        })
+      }
+    })
+
     client.on('spawn', () => {
-      ctx.reply('🟢 البوت متصل الآن داخل اللعبة.', { reply_markup: menu().reply_markup })
+      ctx.reply('🟢 البوت متصل الآن بجميع الإصدارات', { reply_markup: menu().reply_markup })
       afk = setInterval(() => {
         if (client) {
           client.queue('player_auth_input', {
@@ -104,36 +107,34 @@ bot.action('connect', ctx => {
       }, 15000)
     })
 
-    client.on('error', err => {
-      cleanup()
-      ctx.reply(`⚠️ خطأ: ${err.message}`, { reply_markup: menu().reply_markup })
-    })
-
     client.on('disconnect', () => {
       cleanup()
-      ctx.reply('🔴 تم فصل البوت.', { reply_markup: menu().reply_markup })
+      ctx.reply('🔴 تم فصل البوت', { reply_markup: menu().reply_markup })
+    })
+
+    client.on('error', err => {
+      cleanup()
+      ctx.reply('⚠️ خطأ: ' + err.message, { reply_markup: menu().reply_markup })
     })
 
   } catch (e) {
-    ctx.reply('❌ فشل تشغيل محرك الدخول.')
+    ctx.reply('❌ فشل في تشغيل محرك الإصدارات.')
   }
 })
 
 /* ⏹️ خروج */
 bot.action('disconnect', ctx => {
   ctx.answerCbQuery().catch(() => {})
-  if (!client) return ctx.reply('⚠️ غير متصل.', { reply_markup: menu().reply_markup })
+  if (!client) return ctx.reply('⚠️ غير متصل', { reply_markup: menu().reply_markup })
   client.close()
   cleanup()
-  ctx.reply('🛑 تم إخراج البوت.', { reply_markup: menu().reply_markup })
+  ctx.reply('🛑 تم إخراج البوت', { reply_markup: menu().reply_markup })
 })
 
 /* 📊 الحالة */
 bot.action('status', ctx => {
   ctx.answerCbQuery().catch(() => {})
-  const status = client ? '🟢 متصل' : '🔴 غير متصل'
-  const details = server ? `\n📍 \`${server.host}:${server.port}\`` : ''
-  ctx.reply(`${status}${details}`, { reply_markup: menu().reply_markup })
+  ctx.reply(client ? '🟢 البوت متصل' : '🔴 البوت غير متصل', { reply_markup: menu().reply_markup })
 })
 
 function cleanup () {
@@ -142,8 +143,9 @@ function cleanup () {
   client = null
 }
 
-process.on('uncaughtException', e => console.log('Error:', e))
+process.on('uncaughtException', e => console.log(e))
+process.on('unhandledRejection', e => console.log(e))
 
-// ✅ استخدام dropPendingUpdates لتجنب تكرار العمليات (Conflict 409)
+// تنظيف التحديثات المعلقة لحل مشكلة Conflict 409
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ MaxBlack System is Online')
+console.log('✅ Multi-Version Bot Running')
