@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('✅ بوت Aternos يعمل'));
 app.listen(PORT, () => console.log(`🚀 ${PORT}`));
 
-const TOKEN = process.env.TELEGRAM_TOKEN || "ضع_توكنك_هنا";
+const TOKEN = process.env.TELEGRAM_TOKEN || "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
 const bot = new Telegraf(TOKEN);
 
 // قنوات الاشتراك الإجباري
