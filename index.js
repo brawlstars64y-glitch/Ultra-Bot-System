@@ -2,320 +2,279 @@ const { Telegraf } = require('telegraf');
 const express = require('express');
 const mineflayer = require('mineflayer');
 
-// ⚠️ التوكن - غير هذا بعد التجربة
+// ⚠️ التوكن
 const TOKEN = "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
 
-// 🔗 قنوات الاشتراك الإجباري (بدون @ في البداية)
-const REQUIRED_CHANNELS = [
-    "vsyfyk",      // قناة "مودات دينار"
-    "N_NHGER",     // قناة "ترويج سيرفرات ماين كرافت"
-    "sjxhhdbx72"   // قناة "مـْـْْـْمعٌـِـِِـِلُـِـِِـٍِمـْـْْـْآتٌـٌـي"
-];
+// 🔗 قنوات الاشتراك
+const REQUIRED_CHANNELS = ["vsyfyk", "N_NHGER", "sjxhhdbx72"];
 
-// ID المشرف (ضع ايديك هنا)
-const ADMIN_ID = "ايديك_هنا";
-
-// خادم ويب للحفاظ على التطبيق نشط
+// خادم ويب
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// صفحة ويب
 app.get('/', (req, res) => {
-    res.send(`
-        <!DOCTYPE html>
-        <html dir="rtl">
-        <head>
-            <meta charset="UTF-8">
-            <title>بوت بيدروك | اشتراك إجباري</title>
-            <style>
-                body { font-family: Arial; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-                .container { background: rgba(255,255,255,0.1); padding: 30px; border-radius: 15px; max-width: 700px; margin: 0 auto; }
-                h1 { margin-bottom: 30px; }
-                .channel { background: rgba(255,255,255,0.15); margin: 10px 0; padding: 15px; border-radius: 8px; }
-                .btn { background: #4CAF50; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block; margin: 5px; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🤖 بوت بيدروك 24/7 مع اشتراك إجباري</h1>
-                <div class="channel">
-                    <h3>📢 القنوات المطلوبة:</h3>
-                    <a href="https://t.me/vsyfyk" class="btn" target="_blank">1. قناة مودات دينار</a>
-                    <a href="https://t.me/N_NHGER" class="btn" target="_blank">2. ترويج سيرفرات</a>
-                    <a href="https://t.me/sjxhhdbx72" class="btn" target="_blank">3. قناة تعليمية</a>
-                </div>
-                <p>🕒 ${new Date().toLocaleString('ar-SA')}</p>
-            </div>
-        </body>
-        </html>
-    `);
+    res.send('🤖 بوت بيدروك 24/7 يعمل بنجاح');
 });
+app.listen(PORT, () => console.log(`🌐 خادم ويب: ${PORT}`));
 
-// نقطة التحقق
-app.get('/health', (req, res) => {
-    res.json({ status: 'healthy', channels: REQUIRED_CHANNELS, uptime: process.uptime() });
-});
-
-// بدء خادم الويب
-app.listen(PORT, () => {
-    console.log(`🌐 خادم ويب يعمل على ${PORT}`);
-    console.log(`📢 القنوات المطلوبة: ${REQUIRED_CHANNELS.map(c => `@${c}`).join(', ')}`);
-});
-
-// تخزين البيانات
+// تخزين
 let userData = {};
 let activeBots = {};
 let bot = null;
 
-// 🔍 دالة التحقق من الاشتراك (محسنة)
+// 🔍 تحقق من الاشتراك
 async function checkSubscription(userId) {
-    const results = [];
-    
     for (const channel of REQUIRED_CHANNELS) {
         try {
             const member = await bot.telegram.getChatMember(`@${channel}`, userId);
-            const isMember = ['member', 'administrator', 'creator'].includes(member.status);
-            
-            results.push({
-                channel: `@${channel}`,
-                status: member.status,
-                isMember: isMember,
-                error: null
-            });
-            
-        } catch (error) {
-            console.error(`❌ خطأ في ${channel}:`, error.message);
-            results.push({
-                channel: `@${channel}`,
-                status: 'error',
-                isMember: false,
-                error: error.message
-            });
+            if (!['member', 'administrator', 'creator'].includes(member.status)) {
+                return false;
+            }
+        } catch {
+            return false;
         }
-        
-        // تأخير بين الطلبات
-        await new Promise(resolve => setTimeout(resolve, 300));
     }
+    return true;
+}
+
+// 🚀 إضافة سيرفر SUPER EASY
+async function addServerEasy(ctx) {
+    const userId = ctx.from.id;
+    const username = ctx.from.first_name;
     
-    const allSubscribed = results.every(r => r.isMember);
-    const missing = results.filter(r => !r.isMember).map(r => r.channel);
-    
-    return {
-        subscribed: allSubscribed,
-        details: results,
-        missingChannels: missing
+    // إنشاء لوحة أزرار للاختيار السريع
+    const keyboard = {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "🌐 pedrock.net", callback_data: "server_pedrock.net_19132" },
+                    { text: "🎮 mc.pedrock.com", callback_data: "server_mc.pedrock.com_19132" }
+                ],
+                [
+                    { text: "🚀 play.example.com", callback_data: "server_play.example.com_19132" },
+                    { text: "⚡ server.mc", callback_data: "server_server.mc_19132" }
+                ],
+                [
+                    { text: "➕ إضافة IP مخصص", callback_data: "custom_server" }
+                ]
+            ]
+        }
     };
-}
+    
+    await ctx.reply(`🎮 *أضف سيرفر بكل سهولة ${username}!*
 
-// 🎯 دالة عرض طلب الاشتراك
-function showSubscriptionRequired(ctx, missingChannels = []) {
-    const buttons = REQUIRED_CHANNELS.map(channel => {
-        const name = channel === 'vsyfyk' ? 'مودات دينار' :
-                    channel === 'N_NHGER' ? 'ترويج سيرفرات' :
-                    'قناة تعليمية';
-        
-        return [{
-            text: `📍 ${name}`,
-            url: `https://t.me/${channel}`
-        }];
-    });
+👇 *اختر من القائمة الجاهزة:*
 
-    buttons.push([{ text: '✅ تحقق من الاشتراك', callback_data: 'check_subscription' }]);
+أو اضغط "إضافة IP مخصص" لكتابة IP خاص بك
 
-    ctx.reply(`🔒 *اشتراك إجباري مطلوب*\n\nعزيزي ${ctx.from.first_name}، يجب الاشتراك في:\n\n${REQUIRED_CHANNELS.map((ch, i) => `${i+1}. @${ch}`).join('\n')}\n\n${missingChannels.length > 0 ? `❌ غير مشترك في: ${missingChannels.join(', ')}` : ''}`, {
+📌 *مثال بسيط لو أردت الكتابة:* 
+play.myserver.com`, {
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: buttons }
+        ...keyboard
     });
 }
 
-// 🎮 إنشاء بوت ماينكرافت
-function createMinecraftBot(serverInfo, botNumber) {
+// 🎮 إنشاء بوت ماينكرافت بسيط
+function createSimpleBot(ip, port = 19132, botNumber = 1) {
     try {
         const mcBot = mineflayer.createBot({
-            host: serverInfo.ip,
-            port: serverInfo.port || 19132,
-            username: `Bot${botNumber}_${Date.now()}`,
-            version: serverInfo.version || '1.21.132',
+            host: ip,
+            port: port,
+            username: `Player${botNumber}_${Date.now().toString().slice(-4)}`,
+            version: '1.21.132',
             auth: 'offline'
         });
 
         mcBot.on('login', () => {
-            console.log(`✅ ${mcBot.username} دخل ${serverInfo.name}`);
+            console.log(`✅ ${mcBot.username} دخل ${ip}`);
         });
 
         mcBot.on('spawn', () => {
+            // حركة بسيطة كل دقيقة
             setInterval(() => {
                 if (mcBot.entity) {
                     mcBot.setControlState('jump', true);
-                    setTimeout(() => mcBot.setControlState('jump', false), 200);
-                    mcBot.look(Math.random() * 360, 0);
+                    setTimeout(() => mcBot.setControlState('jump', false), 300);
                 }
             }, 60000);
         });
 
-        mcBot.on('end', () => {
-            console.log(`🔌 ${mcBot.username} انقطع`);
-            setTimeout(() => {
-                // إعادة الاتصال إذا كان النظام نشط
-                const serverId = serverInfo.id;
-                if (activeBots[serverId]) {
-                    const newBot = createMinecraftBot(serverInfo, botNumber);
-                    if (newBot) {
-                        const index = activeBots[serverId].findIndex(b => b === mcBot);
-                        if (index > -1) activeBots[serverId][index] = newBot;
-                    }
-                }
-            }, 15000);
-        });
-
-        mcBot.on('error', (err) => {
-            console.log(`⚠️ خطأ: ${err.message}`);
-        });
-
         return mcBot;
-        
-    } catch (err) {
-        console.log('❌ فشل إنشاء بوت:', err.message);
+    } catch {
         return null;
     }
 }
 
-// 🚀 تهيئة البوت مع كل المميزات
+// 🏁 بدء البوت
 async function initializeBot() {
     try {
         bot = new Telegraf(TOKEN);
         
-        // 🔧 Middleware للتحقق من الاشتراك قبل كل أمر (باستثناء أوامر محددة)
+        // 🔧 Middleware للاشتراك
         bot.use(async (ctx, next) => {
-            const allowedCommands = ['start', 'testme', 'check_subscription'];
+            const allowed = ['start', 'easy', 'add'];
             const command = ctx.message?.text?.split(' ')[0]?.replace('/', '') || '';
             
-            if (allowedCommands.includes(command) || ctx.callbackQuery) {
+            if (allowed.includes(command) || ctx.callbackQuery) {
                 return next();
             }
             
-            // التحقق من الاشتراك
-            const subscription = await checkSubscription(ctx.from.id);
-            
-            if (!subscription.subscribed) {
-                console.log(`❌ ${ctx.from.username || ctx.from.id} غير مشترك`);
-                return showSubscriptionRequired(ctx, subscription.missingChannels);
+            const isSubscribed = await checkSubscription(ctx.from.id);
+            if (!isSubscribed) {
+                const buttons = REQUIRED_CHANNELS.map(ch => [{
+                    text: `📍 انضم @${ch}`,
+                    url: `https://t.me/${ch}`
+                }]);
+                
+                await ctx.reply(`🔒 *يجب الاشتراك في القنوات أولاً*\n\nانضم ثم أرسل /start`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: buttons }
+                });
+                return;
             }
             
             return next();
         });
 
-        // 🏁 أمر البداية
-        bot.start(async (ctx) => {
-            const subscription = await checkSubscription(ctx.from.id);
+        // 🎯 الأمر السهل الجديد
+        bot.command(['start', 'easy', 'add'], async (ctx) => {
+            const isSubscribed = await checkSubscription(ctx.from.id);
             
-            if (!subscription.subscribed) {
-                return showSubscriptionRequired(ctx, subscription.missingChannels);
+            if (!isSubscribed) {
+                const buttons = REQUIRED_CHANNELS.map(ch => [{
+                    text: `📍 @${ch}`,
+                    url: `https://t.me/${ch}`
+                }]);
+                buttons.push([{ text: '✅ تحقق', callback_data: 'check_sub' }]);
+                
+                await ctx.reply(`🔒 *أولاً: انضم للقنوات*\n\n1. @vsyfyk\n2. @N_NHGER\n3. @sjxhhdbx72\n\nانضم ثم اضغط تحقق`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: buttons }
+                });
+                return;
             }
             
-            // حفظ المستخدم
+            // إذا كان مشتركاً، عرض نظام الإضافة السهل
+            await addServerEasy(ctx);
+        });
+
+        // 📱 معالجة الأزرار
+        // زر التحقق
+        bot.action('check_sub', async (ctx) => {
+            await ctx.answerCbQuery();
+            const isSubscribed = await checkSubscription(ctx.from.id);
+            
+            if (isSubscribed) {
+                await ctx.editMessageText(`✅ *مبروك! يمكنك الآن إضافة سيرفر*\n\nاضغط /easy للبدء`);
+                await addServerEasy(ctx);
+            } else {
+                await ctx.answerCbQuery('❌ ما زلت غير مشترك', { show_alert: true });
+            }
+        });
+
+        // اختيار سيرفر جاهز
+        bot.action(/^server_/, async (ctx) => {
+            await ctx.answerCbQuery();
+            const data = ctx.callbackQuery.data;
+            const parts = data.split('_');
+            const ip = parts[1];
+            const port = parts[2] || 19132;
+            
             const userId = ctx.from.id;
             if (!userData[userId]) {
                 userData[userId] = {
                     name: ctx.from.first_name,
-                    servers: [],
-                    joined: new Date().toISOString()
+                    servers: []
                 };
             }
             
-            const keyboard = {
+            // إضافة السيرفر
+            const server = {
+                id: Date.now(),
+                name: `سيرفر ${ip.split('.')[0]}`,
+                ip: ip,
+                port: parseInt(port),
+                added: new Date().toLocaleTimeString()
+            };
+            
+            userData[userId].servers.push(server);
+            
+            // عرض خيارات مباشرة
+            const actionKeyboard = {
                 reply_markup: {
-                    keyboard: [
-                        ['➕ أضف سيرفر', '▶️ تشغيل البوتات'],
-                        ['📋 سيرفراتي', '⏹️ إيقاف البوتات'],
-                        ['📊 الحالة', '🆘 المساعدة']
-                    ],
-                    resize_keyboard: true
+                    inline_keyboard: [
+                        [
+                            { text: "▶️ تشغيل بوت", callback_data: `startbot_${server.id}_1` },
+                            { text: "▶️ تشغيل 2 بوت", callback_data: `startbot_${server.id}_2` }
+                        ],
+                        [
+                            { text: "➕ إضافة سيرفر آخر", callback_data: "add_another" },
+                            { text: "📋 سيرفراتي", callback_data: "my_servers" }
+                        ]
+                    ]
                 }
             };
             
-            ctx.reply(`🎮 *مرحباً ${ctx.from.first_name}!*\n\n✅ تم التحقق من اشتراكاتك\n\n✨ *بوت بيدروك 24/7*\n\n👇 اختر من الأزرار:`, {
+            await ctx.reply(`✅ *تمت الإضافة بنجاح!*\n\n📛 ${server.name}\n🌐 ${ip}:${port}\n\n👇 *ماذا تريد الآن؟*`, {
                 parse_mode: 'Markdown',
-                ...keyboard
+                ...actionKeyboard
             });
         });
 
-        // 🔄 زر التحقق
-        bot.action('check_subscription', async (ctx) => {
-            await ctx.answerCbQuery('جاري التحقق...');
-            
-            const subscription = await checkSubscription(ctx.from.id);
-            
-            if (subscription.subscribed) {
-                await ctx.editMessageText(`✅ *مبروك!*\n\nيمكنك الآن استخدام البوت.\n\nأرسل /start للبدء.`, {
-                    parse_mode: 'Markdown'
-                });
-            } else {
-                await ctx.editMessageText(`❌ *ما زلت غير مشترك*\n\nالقنوات المفقودة:\n${subscription.missingChannels.join('\n')}\n\n⚠️ تأكد من الانضمام ثم اضغط تحقق مرة أخرى`, {
-                    parse_mode: 'Markdown'
-                });
-            }
-        });
-
-        // 🧪 أمر اختبار
-        bot.command('testme', async (ctx) => {
-            const subscription = await checkSubscription(ctx.from.id);
-            
-            let message = `🔍 *نتيجة فحص اشتراكاتك:*\n\n`;
-            
-            subscription.details.forEach((detail, i) => {
-                message += `${i+1}. ${detail.channel}: ${detail.isMember ? '✅ مشترك' : '❌ غير مشترك'}\n`;
-                message += `   الحالة: ${detail.status}\n\n`;
-            });
-            
-            message += subscription.subscribed 
-                ? '🎉 *أنت مشترك في جميع القنوات*'
-                : `❌ *أنت غير مشترك في:*\n${subscription.missingChannels.join('\n')}`;
-            
-            ctx.reply(message, { parse_mode: 'Markdown' });
-        });
-
-        // ➕ إضافة سيرفر
-        bot.hears('➕ أضف سيرفر', async (ctx) => {
-            await ctx.reply(`📝 *أضف سيرفر بيدروك*\n\nأرسل: اسم السيرفر IP\n\nمثال:\nسيرفرنا play.example.com\n\nأو مع بورت:\nسيرفرنا play.example.com 19133`, {
-                parse_mode: 'Markdown'
-            });
+        // إضافة IP مخصص
+        bot.action('custom_server', async (ctx) => {
+            await ctx.answerCbQuery();
+            await ctx.reply(`📝 *أرسل لي IP السيرفر فقط:*\n\nمثال:\nplay.myserver.com\n\nأو مع بورت:\nplay.myserver.com 19133\n\nاكتب الآن:`);
             
             const userId = ctx.from.id;
             const handler = async (nextCtx) => {
                 if (nextCtx.from.id === userId) {
-                    const text = nextCtx.message.text;
+                    const text = nextCtx.message.text.trim();
                     
-                    if (text.includes('أضف سيرفر') || text.includes('سيرفراتي') || 
-                        text.includes('تشغيل') || text.includes('إيقاف')) {
+                    if (text.startsWith('/')) {
                         bot.off('text', handler);
                         return;
                     }
                     
                     const parts = text.split(' ');
-                    if (parts.length >= 2) {
-                        const name = parts[0];
-                        const ip = parts[1];
-                        const port = parts[2] ? parseInt(parts[2]) : 19132;
+                    const ip = parts[0];
+                    const port = parts[1] ? parseInt(parts[1]) : 19132;
+                    
+                    if (ip.includes('.')) {
+                        // إضافة السيرفر
+                        if (!userData[userId]) {
+                            userData[userId] = { servers: [] };
+                        }
                         
                         const server = {
                             id: Date.now(),
-                            name: name,
+                            name: `سيرفر ${ip.split('.')[0]}`,
                             ip: ip,
                             port: port,
-                            version: '1.21.132',
-                            added: new Date().toLocaleString()
+                            added: new Date().toLocaleTimeString()
                         };
                         
                         userData[userId].servers.push(server);
                         
-                        await nextCtx.reply(`✅ *تمت الإضافة!*\n\n📛 ${name}\n🌐 ${ip}:${port}\n🎮 بيدروك 1.21.132\n\nاضغط "▶️ تشغيل البوتات"`, {
-                            parse_mode: 'Markdown'
+                        // خيارات سريعة
+                        const quickActions = {
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: "⚡ تشغيل بوت سريع", callback_data: `quickstart_${server.id}` },
+                                        { text: "➕ إضافة آخر", callback_data: "add_another" }
+                                    ]
+                                ]
+                            }
+                        };
+                        
+                        await nextCtx.reply(`🎉 *تم!*\n\n✅ ${ip}:${port}\n\nالبوت جاهز للتشغيل!`, {
+                            parse_mode: 'Markdown',
+                            ...quickActions
                         });
                         
                         bot.off('text', handler);
                     } else {
-                        await nextCtx.reply('❌ الشكل غير صحيح\nمثال: سيرفرنا play.example.com');
+                        await nextCtx.reply('❌ IP غير صالح\nمثال: play.example.com');
                     }
                 }
             };
@@ -323,166 +282,200 @@ async function initializeBot() {
             bot.on('text', handler);
         });
 
-        // ▶️ تشغيل البوتات
-        bot.hears('▶️ تشغيل البوتات', async (ctx) => {
+        // تشغيل بوت سريع
+        bot.action(/^quickstart_/, async (ctx) => {
+            await ctx.answerCbQuery('جاري التشغيل...');
+            const serverId = ctx.callbackQuery.data.split('_')[1];
             const userId = ctx.from.id;
             
-            if (!userData[userId] || userData[userId].servers.length === 0) {
-                await ctx.reply('❌ لا توجد سيرفرات، أضف سيرفر أولاً');
-                return;
+            const userServers = userData[userId]?.servers || [];
+            const server = userServers.find(s => s.id == serverId);
+            
+            if (server) {
+                // تشغيل بوت واحد
+                const mcBot = createSimpleBot(server.ip, server.port, 1);
+                if (mcBot) {
+                    if (!activeBots[serverId]) activeBots[serverId] = [];
+                    activeBots[serverId].push(mcBot);
+                    
+                    await ctx.reply(`🚀 *بدأ البوت باللعب!*\n\n✅ ${server.ip}\n🤖 بوت واحد نشط\n\n📌 سيبقى نشطاً 24/7 تلقائياً`);
+                }
             }
+        });
+
+        // تشغيل بوتات
+        bot.action(/^startbot_/, async (ctx) => {
+            await ctx.answerCbQuery();
+            const parts = ctx.callbackQuery.data.split('_');
+            const serverId = parts[1];
+            const count = parseInt(parts[2]) || 1;
+            const userId = ctx.from.id;
             
-            await ctx.reply('🚀 جاري تشغيل البوتات...');
+            const userServers = userData[userId]?.servers || [];
+            const server = userServers.find(s => s.id == serverId);
             
-            let totalBots = 0;
-            for (const server of userData[userId].servers) {
+            if (server) {
                 // إيقاف القديم
-                if (activeBots[server.id]) {
-                    activeBots[server.id].forEach(b => {
-                        try { b.quit(); } catch {}
-                    });
+                if (activeBots[serverId]) {
+                    activeBots[serverId].forEach(b => b.quit());
                 }
                 
-                // إنشاء بوتين جديدين
-                activeBots[server.id] = [];
-                for (let i = 1; i <= 2; i++) {
-                    const newBot = createMinecraftBot(server, i);
-                    if (newBot) {
-                        activeBots[server.id].push(newBot);
-                        totalBots++;
-                    }
+                // تشغيل جديد
+                activeBots[serverId] = [];
+                for (let i = 0; i < count; i++) {
+                    const mcBot = createSimpleBot(server.ip, server.port, i+1);
+                    if (mcBot) activeBots[serverId].push(mcBot);
                 }
+                
+                await ctx.reply(`✅ *${count} بوت يعملون الآن!*\n\n🎮 ${server.name}\n🌐 ${server.ip}:${server.port}\n🤖 ${count} لاعب نشط\n\n⏰ يعملون 24/7`);
             }
-            
-            await ctx.reply(`✅ تم تشغيل ${totalBots} بوت\n\n🤖 البوتات تعمل الآن وتعيد الاتصال تلقائياً`, {
-                parse_mode: 'Markdown'
-            });
         });
 
-        // 📋 سيرفراتي
-        bot.hears('📋 سيرفراتي', async (ctx) => {
+        // إضافة سيرفر آخر
+        bot.action('add_another', async (ctx) => {
+            await ctx.answerCbQuery();
+            await addServerEasy(ctx);
+        });
+
+        // سيرفراتي
+        bot.action('my_servers', async (ctx) => {
+            await ctx.answerCbQuery();
             const userId = ctx.from.id;
+            const servers = userData[userId]?.servers || [];
             
-            if (!userData[userId] || userData[userId].servers.length === 0) {
-                await ctx.reply('📭 لا توجد سيرفرات');
+            if (servers.length === 0) {
+                await ctx.reply('📭 *لا توجد سيرفرات*\n\nاضغط /easy لإضافة أول سيرفر');
                 return;
             }
             
-            let message = `📋 *سيرفراتك (${userData[userId].servers.length})*\n\n`;
+            let message = `📋 *سيرفراتك (${servers.length})*\n\n`;
             
-            userData[userId].servers.forEach((server, index) => {
-                const botsCount = activeBots[server.id] ? activeBots[server.id].length : 0;
-                message += `*${index + 1}. ${server.name}*\n🌐 ${server.ip}:${server.port}\n🤖 ${botsCount} بوت\n\n`;
+            servers.forEach((server, index) => {
+                const botsCount = activeBots[server.id]?.length || 0;
+                message += `*${index+1}. ${server.name}*\n`;
+                message += `🌐 ${server.ip}:${server.port}\n`;
+                message += `🤖 ${botsCount} بوت نشط\n`;
+                message += `⏰ ${server.added}\n\n`;
             });
             
-            await ctx.reply(message, { parse_mode: 'Markdown' });
+            const serverButtons = servers.map((server, index) => {
+                return [{
+                    text: `▶️ ${server.name}`,
+                    callback_data: `startbot_${server.id}_1`
+                }];
+            });
+            
+            serverButtons.push([{ text: "➕ إضافة جديد", callback_data: "add_another" }]);
+            
+            await ctx.reply(message, {
+                parse_mode: 'Markdown',
+                reply_markup: { inline_keyboard: serverButtons }
+            });
         });
 
-        // ⏹️ إيقاف البوتات
-        bot.hears('⏹️ إيقاف البوتات', async (ctx) => {
+        // 🎮 أوامر نصية سهلة
+        bot.hears(['سيرفراتي', 'سيرفرات'], async (ctx) => {
             const userId = ctx.from.id;
-            let stopped = 0;
+            const servers = userData[userId]?.servers || [];
             
-            if (userData[userId]) {
-                for (const server of userData[userId].servers) {
-                    if (activeBots[server.id]) {
-                        activeBots[server.id].forEach(bot => {
-                            try { 
-                                bot.quit();
-                                stopped++;
-                            } catch {}
-                        });
-                        delete activeBots[server.id];
-                    }
+            if (servers.length === 0) {
+                await ctx.reply('📭 لا توجد سيرفرات\nاكتب /easy لإضافة سيرفر');
+                return;
+            }
+            
+            let message = `📋 لديك ${servers.length} سيرفر:\n\n`;
+            servers.forEach((s, i) => {
+                message += `${i+1}. ${s.name} (${s.ip})\n`;
+            });
+            
+            await ctx.reply(message);
+        });
+
+        bot.hears(['شغل', 'تشغيل', 'ابدأ'], async (ctx) => {
+            const userId = ctx.from.id;
+            const servers = userData[userId]?.servers || [];
+            
+            if (servers.length === 0) {
+                await ctx.reply('❌ أضف سيرفر أولاً بـ /easy');
+                return;
+            }
+            
+            if (servers.length === 1) {
+                // إذا كان سيرفر واحد فقط، شغله مباشرة
+                const server = servers[0];
+                const mcBot = createSimpleBot(server.ip, server.port, 1);
+                if (mcBot) {
+                    if (!activeBots[server.id]) activeBots[server.id] = [];
+                    activeBots[server.id].push(mcBot);
+                    await ctx.reply(`🚀 بدأ البوت باللعب في ${server.ip}!`);
                 }
+            } else {
+                // إذا كان أكثر من سيرفر، عرض قائمة للاختيار
+                const buttons = servers.map(server => {
+                    return [{
+                        text: `▶️ ${server.name}`,
+                        callback_data: `startbot_${server.id}_1`
+                    }];
+                });
+                
+                await ctx.reply(`📱 *اختر سيرفر للتشغيل:*\n\nلديك ${servers.length} سيرفر`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: buttons }
+                });
             }
-            
-            await ctx.reply(stopped > 0 ? `🛑 تم إيقاف ${stopped} بوت` : '⚠️ لا توجد بوتات نشطة');
         });
 
-        // 📊 الحالة
-        bot.hears('📊 الحالة', async (ctx) => {
-            const totalBots = Object.values(activeBots).reduce((sum, bots) => sum + bots.length, 0);
-            const totalUsers = Object.keys(userData).length;
-            const activeServers = Object.keys(activeBots).length;
+        bot.hears(['توقف', 'اوقف', 'stop'], async (ctx) => {
+            const userId = ctx.from.id;
+            const servers = userData[userId]?.servers || [];
             
-            await ctx.reply(`📊 *حالة النظام*\n\n👥 المستخدمون: ${totalUsers}\n🤖 البوتات: ${totalBots}\n🎮 السيرفرات النشطة: ${activeServers}\n📢 القنوات المطلوبة: ${REQUIRED_CHANNELS.length}\n🕒 وقت التشغيل: ${Math.floor(process.uptime() / 60)} دقيقة`, {
+            let stopped = 0;
+            servers.forEach(server => {
+                if (activeBots[server.id]) {
+                    activeBots[server.id].forEach(b => {
+                        try { b.quit(); stopped++; } catch {}
+                    });
+                    delete activeBots[server.id];
+                }
+            });
+            
+            await ctx.reply(stopped > 0 ? `🛑 أوقفت ${stopped} بوت` : '⚠️ لا توجد بوتات نشطة');
+        });
+
+        // 🆘 المساعدة البسيطة
+        bot.hears(['مساعدة', 'مساعده', 'help'], async (ctx) => {
+            await ctx.reply(`🆘 *كيفية الاستخدام السريع:*
+            
+1. أرسل */easy*
+2. اختر سيرفر جاهز أو اكتب IP
+3. اضغط "تشغيل بوت"
+4. تم! البوت يلعب تلقائياً
+
+📌 *أوامر سريعة:*
+- "سيرفراتي" ← لعرض سيرفراتك
+- "شغل" ← لتشغيل البوتات
+- "توقف" ← لإيقاف البوتات
+
+✅ *سهل جداً!*`, {
                 parse_mode: 'Markdown'
             });
-        });
-
-        // 🆘 المساعدة
-        bot.hears('🆘 المساعدة', async (ctx) => {
-            await ctx.reply(`🆘 *المساعدة*\n\n🔒 *الاشتراك الإجباري:*\n1. انضم للقنوات المطلوبة\n2. اضغط تحقق من الاشتراك\n\n🎮 *استخدام البوت:*\n1. أضف سيرفر\n2. شغل البوتات\n3. البوتات تعمل 24/7\n\n📌 *ملاحظة:* البوتات تعيد الاتصال تلقائياً`, {
-                parse_mode: 'Markdown'
-            });
-        });
-
-        // 👑 أوامر المشرف
-        bot.command('admin', async (ctx) => {
-            if (ctx.from.id.toString() !== ADMIN_ID) {
-                return ctx.reply('❌ للمشرف فقط');
-            }
-            
-            let report = `👑 *تقرير المشرف*\n\n`;
-            report += `👥 المستخدمون: ${Object.keys(userData).length}\n`;
-            report += `🤖 البوتات النشطة: ${Object.values(activeBots).reduce((sum, bots) => sum + bots.length, 0)}\n`;
-            report += `🎮 السيرفرات: ${Object.keys(userData).reduce((sum, id) => sum + userData[id].servers.length, 0)}\n\n`;
-            
-            report += `📢 *القنوات المطلوبة:*\n`;
-            for (const channel of REQUIRED_CHANNELS) {
-                report += `• @${channel}\n`;
-            }
-            
-            await ctx.reply(report, { parse_mode: 'Markdown' });
         });
 
         // 🚀 تشغيل البوت
         await bot.launch();
-        console.log('✅ بوت التلجرام يعمل بنجاح!');
-        
-        // إرسال إشعار للمشرف
-        if (ADMIN_ID) {
-            try {
-                await bot.telegram.sendMessage(ADMIN_ID, 
-                    `🚀 النظام يعمل!\n📢 القنوات: ${REQUIRED_CHANNELS.map(c => `@${c}`).join(', ')}`);
-            } catch {}
-        }
+        console.log('✅ البوت يعمل! أرسل /easy للبدء');
         
     } catch (error) {
-        console.error('❌ فشل تشغيل البوت:', error.message);
-        setTimeout(initializeBot, 30000);
+        console.error('❌ خطأ:', error.message);
+        setTimeout(initializeBot, 10000);
     }
 }
 
-// بدء التشغيل
-console.log('🚀 بدء نظام بيدروك مع كل المميزات...');
+// بدء
+console.log('🚀 نظام إضافة سيرفر السهل...');
 initializeBot();
 
-// 🔁 فحص البوت
+// 🔁 إعادة تشغيل
 setInterval(() => {
-    if (!bot) {
-        console.log('🔄 إعادة تشغيل البوت...');
-        initializeBot();
-    }
-}, 60000);
-
-// 🛑 إغلاق نظيف
-process.once('SIGINT', () => {
-    console.log('\n🛑 إيقاف النظام...');
-    
-    // إيقاف جميع بوتات ماينكرافت
-    for (const serverId in activeBots) {
-        activeBots[serverId]?.forEach(b => {
-            try { b.quit(); } catch {}
-        });
-    }
-    
-    if (bot) bot.stop();
-    process.exit(0);
-});
-
-process.once('SIGTERM', () => {
-    if (bot) bot.stop();
-    process.exit(0);
-});
+    if (!bot) initializeBot();
+}, 30000);
