@@ -1,10 +1,10 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { exec } = require('child_process');
 
-const token = '8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ'; // استبدلها برتك الخاص
+const token = '8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ'; // التوكن الخاص بك
 const bot = new TelegramBot(token, { polling: true });
 
-// قاعدة بيانات بسيطة لتخزين السيرفرات (مؤقتة، يمكن استبدالها بقاعدة بيانات حقيقية)
+// قاعدة بيانات بسيطة لتخزين السيرفرات
 let servers = [];
 
 // وظيفة التحقق من الحالة
@@ -48,7 +48,7 @@ bot.onText(/\/start/, (msg) => {
   });
 });
 
-// حدث ضغط الأزرار
+// التعامل مع ضغط الأزرار
 bot.on('callback_query', async (callbackQuery) => {
   const data = callbackQuery.data;
   const chatId = callbackQuery.message.chat.id;
@@ -66,30 +66,33 @@ bot.on('callback_query', async (callbackQuery) => {
       bot.sendMessage(chatId, 'لا توجد سيرفرات حالياً.');
     } else {
       let msgText = 'قائمة السيرفرات:\n';
-      for (let i = 0; i < servers.length; i++) {
-        msgText += `${i + 1}. ${servers[i].ip}\n`;
-      }
+      servers.forEach((server, index) => {
+        msgText += `${index + 1}. ${server.ip}\n`;
+      });
       bot.sendMessage(chatId, msgText);
     }
-  } else if (data === 'check_server') {
-    const index = parseInt(callbackQuery.message.text.split(' ')[1]) - 1;
+  } else if (data.startsWith('check_server_')) {
+    const index = parseInt(data.split('_')[2]);
     if (servers[index]) {
       const status = await checkServerStatus(servers[index].ip);
       bot.sendMessage(chatId, `السيرفر ${servers[index].ip} حالته: ${status ? 'شغال' : 'متوقف'}`);
     }
-  } else if (data === 'restart_server') {
-    try {
-      await restartServer();
-      bot.sendMessage(chatId, 'تم إعادة تشغيل السيرفر بنجاح.');
-    } catch (err) {
-      bot.sendMessage(chatId, 'حدث خطأ أثناء إعادة التشغيل.');
+  } else if (data.startsWith('restart_server_')) {
+    const index = parseInt(data.split('_')[2]);
+    if (servers[index]) {
+      try {
+        await restartServer();
+        bot.sendMessage(chatId, 'تم إعادة تشغيل السيرفر بنجاح.');
+      } catch (err) {
+        bot.sendMessage(chatId, 'حدث خطأ أثناء إعادة التشغيل.');
+      }
     }
   }
 
   bot.answerCallbackQuery(callbackQuery.id);
 });
 
-// لإظهار قائمة السيرفرات مع أزرار لكل سيرفر
+// لعرض قائمة السيرفرات مع أزرار لكل سيرفر
 bot.on('message', (msg) => {
   if (msg.text && msg.text === '/servers') {
     if (servers.length === 0) {
