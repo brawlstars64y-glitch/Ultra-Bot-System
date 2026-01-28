@@ -8,18 +8,19 @@ http.createServer((req, res) => res.end('OK')).listen(process.env.PORT || 3000)
 /* Telegram Bot */
 const bot = new Telegraf('8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU')
 
-// ✅ تحسين الجلسات لتخزين بيانات متعددة
+// ✅ تحسين الجلسات
 bot.use(session({
   getSessionKey: (ctx) => ctx.from && ctx.chat && `${ctx.from.id}:${ctx.chat.id}`,
   defaultSession: () => ({
     servers: [], // تخزين عدة سيرفرات
     currentServer: null,
-    step: null
+    step: null,
+    action: null // نوع الإجراء (add, delete, edit)
   })
 }))
 
 // متغيرات عامة
-let clients = new Map() // لتخزين اتصالات متعددة
+let clients = new Map()
 let afkIntervals = new Map()
 
 /* 🎮 القائمة الرئيسية */
@@ -27,6 +28,7 @@ function mainMenu() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('➕ إضافة سيرفر', 'add_server')],
     [Markup.button.callback('📋 قائمة السيرفرات', 'list_servers')],
+    [Markup.button.callback('🗑️ حذف سيرفر', 'delete_server')],
     [Markup.button.callback('▶️ دخول', 'connect')],
     [Markup.button.callback('⏹️ خروج', 'disconnect')],
     [Markup.button.callback('⚙️ إعدادات AFK', 'afk_settings')],
@@ -35,11 +37,29 @@ function mainMenu() {
 }
 
 /* 🎮 قائمة السيرفرات */
-function serversMenu(servers) {
-  const buttons = servers.map((server, index) => 
-    [Markup.button.callback(`${server.name} - ${server.host}:${server.port}`, `select_${index}`)]
-  )
+function serversMenu(servers, action = 'select') {
+  const buttons = servers.map((server, index) => [
+    Markup.button.callback(
+      `${server.name} - ${server.host}:${server.port}`,
+      `${action}_${index}`
+    )
+  ])
   buttons.push([Markup.button.callback('🔙 رجوع', 'back_to_main')])
+  return Markup.inlineKeyboard(buttons)
+}
+
+/* 🗑️ قائمة حذف السيرفرات */
+function deleteMenu(servers) {
+  const buttons = servers.map((server, index) => [
+    Markup.button.callback(
+      `❌ ${server.name} - ${server.host}:${server.port}`,
+      `delete_${index}`
+    )
+  ])
+  buttons.push([
+    Markup.button.callback('🗑️ حذف الكل', 'delete_all'),
+    Markup.button.callback('🔙 رجوع', 'back_to_main')
+  ])
   return Markup.inlineKeyboard(buttons)
 }
 
@@ -62,6 +82,7 @@ bot.start(ctx => {
 bot.action('add_server', ctx => {
   ctx.answerCbQuery().catch(() => {})
   ctx.session.step = 'server_name'
+  ctx.session.action = 'add'
   ctx.reply('📝 أدخل اسم للسيرفر (مثال: سيرفر فري):')
 })
 
@@ -72,7 +93,101 @@ bot.action('list_servers', ctx => {
     return ctx.reply('⚠️ لا توجد سيرفرات مضافة.', { reply_markup: mainMenu().reply_markup })
   }
   ctx.reply('📋 اختر سيرفر:', { 
-    reply_markup: serversMenu(ctx.session.servers).reply_markup 
+    reply_markup: serversMenu(ctx.session.servers, 'select').reply_markup 
+  })
+})
+
+/* 🗑️ حذف سيرفر */
+bot.action('delete_server', ctx => {
+  ctx.answerCbQuery().catch(() => {})
+  
+  if (!ctx.session.servers || ctx.session.servers.length === 0) {
+    return ctx.reply('⚠️ لا توجد سيرفرات لحذفها.', { reply_markup: mainMenu().reply_markup })
+  }
+  
+  ctx.reply('🗑️ اختر السيرفر الذي تريد حذفه:', {
+    reply_markup: deleteMenu(ctx.session.servers).reply_markup
+  })
+})
+
+/* 🗑️ حذف سيرفر محدد */
+bot.action(/delete_(\d+)/, async ctx => {
+  const index = parseInt(ctx.match[1])
+  
+  if (!ctx.session.servers || !ctx.session.servers[index]) {
+    return ctx.answerCbQuery('⚠️ السيرفر غير موجود')
+  }
+  
+  const deletedServer = ctx.session.servers[index]
+  const serverKey = `${deletedServer.host}:${deletedServer.port}`
+  
+  // إغلاق الاتصال إذا كان السيرفر متصلاً
+  if (clients.has(serverKey)) {
+    const connection = clients.get(serverKey)
+    if (connection.client) {
+      connection.client.close()
+    }
+    cleanupConnection(serverKey)
+  }
+  
+  // حذف السيرفر من القائمة
+  ctx.session.servers.splice(index, 1)
+  
+  // إذا كان السيرفر المحذوف هو الحالي، إلغاء تحديده
+  if (ctx.session.currentServer && 
+      ctx.session.currentServer.host === deletedServer.host &&
+      ctx.session.currentServer.port === deletedServer.port) {
+    ctx.session.currentServer = null
+  }
+  
+  await ctx.answerCbQuery(`✅ تم حذف ${deletedServer.name}`)
+  ctx.reply(`🗑️ تم حذف السيرفر: ${deletedServer.name}\n📍 ${deletedServer.host}:${deletedServer.port}`, {
+    reply_markup: mainMenu().reply_markup
+  })
+})
+
+/* 🗑️ حذف جميع السيرفرات */
+bot.action('delete_all', async ctx => {
+  ctx.answerCbQuery().catch(() => {})
+  
+  if (!ctx.session.servers || ctx.session.servers.length === 0) {
+    return ctx.reply('⚠️ لا توجد سيرفرات لحذفها.')
+  }
+  
+  const confirmKeyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('✅ نعم، احذف الكل', 'confirm_delete_all')],
+    [Markup.button.callback('❌ إلغاء', 'back_to_main')]
+  ])
+  
+  ctx.reply(`⚠️ **تحذير:** هل أنت متأكد من حذف جميع السيرفرات؟\n\nهذا الإجراء لا يمكن التراجع عنه!`, {
+    parse_mode: 'Markdown',
+    reply_markup: confirmKeyboard.reply_markup
+  })
+})
+
+/* ✅ تأكيد حذف الكل */
+bot.action('confirm_delete_all', async ctx => {
+  const totalServers = ctx.session.servers ? ctx.session.servers.length : 0
+  
+  // إغلاق جميع الاتصالات النشطة
+  ctx.session.servers?.forEach(server => {
+    const serverKey = `${server.host}:${server.port}`
+    if (clients.has(serverKey)) {
+      const connection = clients.get(serverKey)
+      if (connection.client) {
+        connection.client.close()
+      }
+      cleanupConnection(serverKey)
+    }
+  })
+  
+  // حذف جميع السيرفرات
+  ctx.session.servers = []
+  ctx.session.currentServer = null
+  
+  await ctx.answerCbQuery(`✅ تم حذف ${totalServers} سيرفر`)
+  ctx.reply(`🗑️ تم حذف جميع السيرفرات (${totalServers}) بنجاح!`, {
+    reply_markup: mainMenu().reply_markup
   })
 })
 
@@ -88,6 +203,7 @@ bot.action('afk_settings', ctx => {
 bot.action('back_to_main', ctx => {
   ctx.answerCbQuery().catch(() => {})
   ctx.session.step = null
+  ctx.session.action = null
   ctx.session.currentServer = null
   ctx.reply('🏠 القائمة الرئيسية:', {
     reply_markup: mainMenu().reply_markup
@@ -139,11 +255,14 @@ bot.on('text', ctx => {
         ctx.session.servers = []
       }
       
-      ctx.session.servers.push(ctx.session.tempServer)
+      const newServer = { ...ctx.session.tempServer, id: Date.now() }
+      ctx.session.servers.push(newServer)
       ctx.session.step = null
+      ctx.session.action = null
       ctx.session.tempServer = null
       
-      ctx.reply('✅ تم إضافة السيرفر بنجاح!', {
+      ctx.reply(`✅ تم إضافة السيرفر بنجاح!\n\n📌 **${newServer.name}**\n📍 ${newServer.host}:${newServer.port}`, {
+        parse_mode: 'Markdown',
         reply_markup: mainMenu().reply_markup
       })
       break
@@ -155,8 +274,9 @@ bot.action(/select_(\d+)/, async ctx => {
   const index = parseInt(ctx.match[1])
   if (ctx.session.servers && ctx.session.servers[index]) {
     ctx.session.currentServer = ctx.session.servers[index]
-    ctx.answerCbQuery(`تم اختيار ${ctx.session.currentServer.name}`)
-    ctx.reply(`✅ السيرفر المحدد: ${ctx.session.currentServer.name}`, {
+    await ctx.answerCbQuery(`✅ تم اختيار ${ctx.session.currentServer.name}`)
+    ctx.reply(`✅ **السيرفر المحدد:** ${ctx.session.currentServer.name}\n📍 ${ctx.session.currentServer.host}:${ctx.session.currentServer.port}`, {
+      parse_mode: 'Markdown',
       reply_markup: mainMenu().reply_markup
     })
   }
@@ -203,7 +323,8 @@ bot.action('connect', async ctx => {
     clients.set(serverKey, {
       client,
       server: server.name,
-      connectedAt: new Date()
+      connectedAt: new Date(),
+      serverInfo: server
     })
 
     // أحداث العميل
@@ -216,7 +337,7 @@ bot.action('connect', async ctx => {
           try {
             client.queue('player_auth_input', {
               pitch: 0,
-              yaw: 0,
+              yaw: Math.random() * 360 - 180,
               position: { x: 0, y: 0, z: 0 },
               move_vector: { x: 0, z: 0 },
               head_yaw: 0,
@@ -366,7 +487,15 @@ bot.action('status', ctx => {
     if (clients.has(serverKey)) {
       const connection = clients.get(serverKey)
       const uptime = Math.floor((new Date() - connection.connectedAt) / 1000)
-      statusMessage += `🟢 **متصل** (منذ ${uptime} ثانية)\n`
+      const minutes = Math.floor(uptime / 60)
+      const hours = Math.floor(minutes / 60)
+      
+      let uptimeText = ''
+      if (hours > 0) uptimeText += `${hours} ساعة `
+      if (minutes % 60 > 0) uptimeText += `${minutes % 60} دقيقة `
+      uptimeText += `${uptime % 60} ثانية`
+      
+      statusMessage += `🟢 **متصل** (منذ ${uptimeText})\n`
       statusMessage += `⏱️ **AFK:** ${afkIntervals.has(serverKey) ? 'مفعل' : 'معطل'}\n`
     } else {
       statusMessage += '🔴 **غير متصل**\n'
@@ -379,6 +508,17 @@ bot.action('status', ctx => {
   statusMessage += `\n**إحصاءات:**\n`
   statusMessage += `📋 السيرفرات: ${ctx.session.servers ? ctx.session.servers.length : 0}\n`
   statusMessage += `🔗 اتصالات نشطة: ${clients.size}\n`
+  
+  // عرض السيرفرات المضافة
+  if (ctx.session.servers && ctx.session.servers.length > 0) {
+    statusMessage += `\n**السيرفرات المضافة:**\n`
+    ctx.session.servers.forEach((server, index) => {
+      const isCurrent = ctx.session.currentServer && 
+                       server.host === ctx.session.currentServer.host &&
+                       server.port === ctx.session.currentServer.port
+      statusMessage += `${isCurrent ? '▶️' : '📌'} ${index + 1}. ${server.name}\n`
+    })
+  }
   
   ctx.reply(statusMessage, {
     parse_mode: 'Markdown',
@@ -426,12 +566,69 @@ bot.launch({
 
 // أوامر إضافية للمطور
 bot.command('clear', (ctx) => {
+  // إغلاق جميع الاتصالات
+  clients.forEach((connection, key) => {
+    if (connection.client) {
+      connection.client.close()
+    }
+    cleanupConnection(key)
+  })
+  
+  // مسح جميع البيانات
   ctx.session.servers = []
   ctx.session.currentServer = null
-  ctx.reply('🧹 تم مسح جميع البيانات.')
+  ctx.session.step = null
+  ctx.session.action = null
+  
+  ctx.reply('🧹 تم مسح جميع السيرفرات والبيانات.')
 })
 
-bot.command('restart', (ctx) => {
-  ctx.reply('🔄 إعادة تشغيل النظام...')
-  // يمكن إضافة منطق إعادة التشغيل هنا
+bot.command('servers', (ctx) => {
+  if (!ctx.session.servers || ctx.session.servers.length === 0) {
+    return ctx.reply('📭 لا توجد سيرفرات مضافة.')
+  }
+  
+  let serversList = '📋 **قائمة السيرفرات:**\n\n'
+  ctx.session.servers.forEach((server, index) => {
+    const isCurrent = ctx.session.currentServer && 
+                     server.host === ctx.session.currentServer.host &&
+                     server.port === ctx.session.currentServer.port
+    serversList += `${isCurrent ? '✅' : '📌'} **${index + 1}. ${server.name}**\n`
+    serversList += `   🌐 ${server.host}:${server.port}\n`
+    serversList += `   👤 ${server.username}\n`
+    if (server.version) serversList += `   🔄 ${server.version}\n`
+    serversList += `   ---\n`
+  })
+  
+  serversList += `\n**الإجمالي:** ${ctx.session.servers.length} سيرفر`
+  
+  ctx.reply(serversList, {
+    parse_mode: 'Markdown',
+    reply_markup: mainMenu().reply_markup
+  })
+})
+
+bot.command('help', (ctx) => {
+  const helpMessage = `🎮 **أوامر البوت:**\n\n` +
+    `🏠 **القائمة الرئيسية:**\n` +
+    `➕ إضافة سيرفر جديد\n` +
+    `📋 عرض قائمة السيرفرات\n` +
+    `🗑️ حذف سيرفر من القائمة\n` +
+    `▶️ الدخول للسيرفر المحدد\n` +
+    `⏹️ الخروج من السيرفر\n` +
+    `⚙️ إعدادات AFK\n` +
+    `📊 حالة البوت والسيرفرات\n\n` +
+    `📝 **أوامر نصية:**\n` +
+    `/servers - عرض جميع السيرفرات\n` +
+    `/clear - مسح جميع البيانات\n` +
+    `/help - عرض هذه المساعدة\n\n` +
+    `⚠️ **ملاحظة:**\n` +
+    `- تأكد من صحة بيانات السيرفر\n` +
+    `- استخدم AFK في أماكن آمنة\n` +
+    `- احفظ بياناتك المهمة`
+  
+  ctx.reply(helpMessage, {
+    parse_mode: 'Markdown',
+    reply_markup: mainMenu().reply_markup
+  })
 })
