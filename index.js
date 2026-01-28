@@ -15,17 +15,15 @@ const token = process.env.BOT_TOKEN || '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQX
 const db = editJsonFile(`${__dirname}/database.json`, { autosave: true });
 const tgBot = new Telegraf(token);
 
-// 📢 قائمة القنوات (تم إضافة القناة الثالثة)
 const CHANNELS = [
     { id: '@minecrafmodss12', link: 'https://t.me/minecrafmodss12' },
-    { id: '@aternosbot24', link: 'https://t.me/aternosbot24' },
-    { id: '@Player_bo', link: 'https://t.me/Player_bo' } // القناة الجديدة
+    { id: '@aternosbot24', link: 'https://t.me/aternosbot24' }
 ];
 const DEVELOPER_LINK = 'https://t.me/uuuaaw';
 
 let activeClients = {};
 
-// 🔍 فحص الاشتراك الإجباري في جميع القنوات
+// 🔍 فحص الاشتراك الإجباري
 async function checkAllSubscriptions(ctx) {
     for (const channel of CHANNELS) {
         try {
@@ -45,16 +43,15 @@ const mainButtons = (ctx) => Markup.inlineKeyboard([
     [Markup.button.url('👨‍💻 المـطـور (الدعم الفني)', DEVELOPER_LINK)]
 ]);
 
-// 🚀 أوامر البداية مع واجهة الاشتراك الثلاثية
+// 🚀 أوامر البداية
 tgBot.start(async (ctx) => {
     if (await checkAllSubscriptions(ctx)) {
         ctx.replyWithMarkdown(`👋 *أهلاً بك يا بطل في نظام MaxBlack*`, mainButtons(ctx));
     } else {
-        ctx.reply('⚠️ *يجب الاشتراك في القنوات الثلاث لتفعيل البوت:*', Markup.inlineKeyboard([
+        ctx.reply('⚠️ *يجب الاشتراك في القنوات لتفعيل البوت:*', Markup.inlineKeyboard([
             [Markup.button.url('📢 القناة الأولى', CHANNELS[0].link)],
             [Markup.button.url('📢 القناة الثانية', CHANNELS[1].link)],
-            [Markup.button.url('📢 القناة الثالثة', CHANNELS[2].link)],
-            [Markup.button.callback('✅ تم الاشتراك في الكل', 'main_menu')]
+            [Markup.button.callback('✅ تم الاشتراك', 'main_menu')]
         ]));
     }
 });
@@ -63,7 +60,7 @@ tgBot.action('main_menu', async (ctx) => {
     if (await checkAllSubscriptions(ctx)) {
         ctx.editMessageText('🔮 *قائمة التحكم الرئيسية:*', { parse_mode: 'Markdown', ...mainButtons(ctx) });
     } else {
-        ctx.answerCbQuery('❌ لم تشترك في جميع القنوات بعد!', { show_alert: true });
+        ctx.answerCbQuery('❌ اشترك أولاً!', { show_alert: true });
     }
 });
 
@@ -85,13 +82,13 @@ tgBot.action('add_server', (ctx) => {
     db.set(`${ctx.from.id}.state`, 'waiting_srv');
 });
 
-// 📝 معالجة النصوص وحماية المدخلات من الروابط
+// 📝 معالجة النصوص وحماية المدخلات
 tgBot.on('text', async (ctx) => {
     const userId = ctx.from.id;
     const msg = ctx.message.text;
     if (db.get(`${userId}.state`) === 'waiting_srv') {
         if (msg.includes('://') || msg.includes('https')) {
-            return ctx.reply("❌ *خطأ:* أرسل العنوان بدون روابط!");
+            return ctx.reply("❌ *خطأ:* أرسل العنوان بدون https أو روابط!");
         }
         if (msg.includes(':')) {
             const [h, p] = msg.split(':');
@@ -104,7 +101,7 @@ tgBot.on('text', async (ctx) => {
     }
 });
 
-// ⚙️ إدارة السيرفرات والتشغيل
+// ⚙️ إدارة السيرفرات والتشغيل بحماية Try-Catch
 tgBot.action(/^manage_srv_(\d+)$/, (ctx) => {
     const index = ctx.match[1];
     const s = db.get(`${ctx.from.id}.servers`)[index];
@@ -130,7 +127,7 @@ tgBot.action(/^start_srv_(\d+)$/, async (ctx) => {
         });
         activeClients[userId].on('spawn', () => ctx.reply(`✅ *بوتك [ ${s.bot_name} ] دخل السيرفر!*`));
         activeClients[userId].on('error', (err) => {
-            ctx.reply(`❌ *فشل:* السيرفر مغلق أو العنوان غير صحيح.`);
+            ctx.reply(`❌ *فشل:* ${err.message.includes('https') ? 'عنوان خاطئ' : 'السيرفر مغلق'}`);
             if (activeClients[userId]) activeClients[userId].close();
         });
     } catch (e) { ctx.reply("❌ حدث خطأ في البيانات."); }
@@ -149,4 +146,4 @@ tgBot.action(/^del_srv_(\d+)$/, (ctx) => {
 });
 
 tgBot.launch({ polling: { dropPendingUpdates: true } });
-console.log('🚀 نظام MaxBlack المطور مع الاشتراك الثلاثي يعمل الآن!');
+console.log('🚀 نظام MaxBlack المطور يعمل الآن!');
