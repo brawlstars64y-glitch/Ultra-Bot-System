@@ -1,518 +1,394 @@
 const { Telegraf } = require('telegraf');
 const mineflayer = require('mineflayer');
 
-// ⚠️ التوكن - تغييره لاحقاً
+// ⚠️ التوكن - غير هذا بعد التجربة
 const TOKEN = "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
 const bot = new Telegraf(TOKEN);
 
-// قاعدة بيانات السيرفرات (تخزين مؤقت)
-let userServers = {};
+// تخزين البيانات
+let userData = {};
 let activeBots = {};
 
-// واجهة إضافة سيرفر
-async function showAddServerMenu(ctx, userId) {
-    const keyboard = {
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "🌍 إضافة سيرفر جديد", callback_data: "add_new_server" }],
-                [{ text: "📋 سيرفراتي", callback_data: "my_servers" }],
-                [{ text: "🚀 تشغيل البوتات", callback_data: "start_bots" }],
-                [{ text: "🛑 إيقاف البوتات", callback_data: "stop_bots" }]
-            ]
-        }
-    };
-    
-    await ctx.reply(`🎮 *لوحة تحكم سيرفرات بيدروك*
-    
-📌 *مميزات النظام:*
-✅ دعم إصدارات بيدروك 1.21.x
-✅ إضافة سيرفرات متعددة
-✅ تشغيل بوتات لكل سيرفر
-✅ واجهة سهلة الاستخدام
-
-👇 اختر من الأزرار أدناه:`, {
-        parse_mode: 'Markdown',
-        ...keyboard
-    });
-}
-
-// إنشاء بوت لسيرفر
-function createServerBot(serverId, serverInfo, botName) {
+// 🎮 إنشاء بوت بسيط
+function createSimpleBot(serverInfo, botNumber) {
     try {
-        const botInstance = mineflayer.createBot({
-            host: serverInfo.host,
-            port: serverInfo.port,
-            username: botName || `PedrockBot_${Date.now()}`,
+        const botName = `Player${botNumber}`;
+        
+        const mcBot = mineflayer.createBot({
+            host: serverInfo.ip,
+            port: serverInfo.port || 19132,
+            username: botName,
             version: serverInfo.version || '1.21.132',
             auth: 'offline'
         });
 
-        botInstance.on('login', () => {
-            console.log(`✅ ${botInstance.username} دخل ${serverInfo.name}`);
+        mcBot.on('login', () => {
+            console.log(`✅ ${botName} دخل السيرفر`);
         });
 
-        botInstance.on('spawn', () => {
-            console.log(`📍 ${botInstance.username} ظهر في ${serverInfo.name}`);
+        mcBot.on('spawn', () => {
+            console.log(`📍 ${botName} ظهر`);
             
-            // حركات دورية
+            // حركة بسيطة كل دقيقة
             setInterval(() => {
-                if (botInstance.entity) {
-                    // حركات عشوائية
-                    const actions = ['jump', 'forward', 'back', 'left', 'right'];
-                    const action = actions[Math.floor(Math.random() * actions.length)];
-                    
-                    if (action === 'jump') {
-                        botInstance.setControlState('jump', true);
-                        setTimeout(() => botInstance.setControlState('jump', false), 300);
-                    } else {
-                        botInstance.setControlState(action, true);
-                        setTimeout(() => botInstance.setControlState(action, false), 1000);
-                    }
+                if (mcBot.entity) {
+                    // قفزة بسيطة
+                    mcBot.setControlState('jump', true);
+                    setTimeout(() => mcBot.setControlState('jump', false), 200);
                     
                     // تحريك الرأس
-                    botInstance.look(Math.random() * 360, Math.random() * 30);
+                    mcBot.look(Math.random() * 360, 0);
                 }
-            }, 60000); // كل دقيقة
+            }, 60000);
         });
 
-        botInstance.on('end', () => {
-            console.log(`🔌 ${botInstance.username} انقطع - إعادة الاتصال...`);
-            setTimeout(() => {
-                createServerBot(serverId, serverInfo, botInstance.username);
-            }, 15000);
+        mcBot.on('end', () => {
+            console.log(`🔌 ${botName} انقطع - إعادة...`);
+            setTimeout(() => createSimpleBot(serverInfo, botNumber), 10000);
         });
 
-        botInstance.on('error', (err) => {
-            console.log(`⚠️ خطأ في ${botInstance.username}:`, err.message);
-        });
-
-        return botInstance;
+        return { name: botName, instance: mcBot };
+        
     } catch (err) {
         console.log('❌ فشل إنشاء بوت:', err.message);
         return null;
     }
 }
 
-// أمر البدء
-bot.start(async (ctx) => {
-    const userId = ctx.from.id;
-    const username = ctx.from.username || ctx.from.first_name;
+// 🏠 القائمة الرئيسية البسيطة
+function showMainMenu(ctx) {
+    const keyboard = {
+        reply_markup: {
+            keyboard: [
+                ['➕ أضف سيرفر', '📋 سيرفراتي'],
+                ['▶️ تشغيل البوتات', '⏹️ إيقاف البوتات'],
+                ['📊 الحالة', '🆘 المساعدة']
+            ],
+            resize_keyboard: true
+        }
+    };
     
-    // تهيئة المستخدم الجديد
-    if (!userServers[userId]) {
-        userServers[userId] = {
-            username: username,
-            servers: [],
-            createdAt: new Date().toISOString()
-        };
-    }
-    
-    await ctx.reply(`🎮 *أهلاً ${username}!*
-    
-مرحباً بك في نظام إدارة سيرفرات بيدروك!
+    ctx.reply(`🎮 *مرحباً في نظام بيدروك البسيط*
 
-📡 *ماذا يمكنك فعل؟:*
-1. إضافة سيرفرات بيدروك
-2. إدارة سيرفراتك
-3. تشغيل بوتات وهمية
-4. مراقبة سيرفراتك`, {
-        parse_mode: 'Markdown'
+📌 *كل ما تحتاجه:*
+1. أضف سيرفر (اسم + IP)
+2. اضغط تشغيل البوتات
+3. البوتات ستبقى نشطة 24/7
+
+👇 اختر من الأزرار:`, {
+        parse_mode: 'Markdown',
+        ...keyboard
     });
-    
-    await showAddServerMenu(ctx, userId);
-});
+}
 
-// معالجة الأزرار
-bot.action('add_new_server', async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.deleteMessage();
-    
-    await ctx.reply(`📝 *إضافة سيرفر جديد*
-    
-أرسل معلومات السيرفر بالشكل التالي:
+// ➕ إضافة سيرفر بخطوة واحدة
+bot.hears('➕ أضف سيرفر', async (ctx) => {
+    await ctx.reply(`📝 *أضف سيرفر بكل سهولة*
 
-🌐 *التنسيق:*
-اسم السيرفر
-الايبي (IP)
-البورت (Port)
-الإصدار (مثال: 1.21.132)
+أرسل لي معلومات السيرفر في رسالة واحدة:
 
 📌 *مثال:*
-سيرفر الإبداع
-play.pedrock.com
-19132
-1.21.130
+سيرفر الإبداع play.pedrock.net
 
-👇 أرسل المعلومات الآن:`, {
+أو يمكنك إضافة البورت:
+سيرفر البناء mc.example.com 19133
+
+📢 *ببساطة:*
+اكتب اسم السيرفر ثم IP
+
+👇 أرسل الآن:`, {
         parse_mode: 'Markdown'
     });
     
-    // الانتظار لإدخال السيرفر
+    // استقبال السيرفر
     bot.on('text', async (nextCtx) => {
-        const text = nextCtx.message.text;
+        const text = nextCtx.message.text.trim();
         const userId = nextCtx.from.id;
         
-        if (text.includes('\n')) {
-            const lines = text.split('\n');
-            if (lines.length >= 4) {
-                const serverInfo = {
-                    id: Date.now(),
-                    name: lines[0].trim(),
-                    host: lines[1].trim(),
-                    port: parseInt(lines[2].trim()) || 19132,
-                    version: lines[3].trim() || '1.21.132',
-                    addedAt: new Date().toISOString()
+        if (text.includes('أضف سيرفر') || text.includes('سيرفراتي') || 
+            text.includes('تشغيل') || text.includes('إيقاف') ||
+            text.includes('الحالة') || text.includes('المساعدة')) {
+            return; // تجاهل أوامر القائمة
+        }
+        
+        // معالجة النص
+        const parts = text.split(' ');
+        
+        if (parts.length >= 2) {
+            const serverName = parts[0];
+            const serverIP = parts[1];
+            const serverPort = parts[2] ? parseInt(parts[2]) : 19132;
+            
+            // حفظ السيرفر
+            if (!userData[userId]) {
+                userData[userId] = {
+                    name: nextCtx.from.first_name,
+                    servers: []
                 };
-                
-                // حفظ السيرفر
-                if (!userServers[userId]) {
-                    userServers[userId] = { servers: [] };
-                }
-                
-                userServers[userId].servers.push(serverInfo);
-                
-                await nextCtx.reply(`✅ *تمت إضافة السيرفر بنجاح!*
-                
-📛 الاسم: ${serverInfo.name}
-🌐 الأيبي: ${serverInfo.host}
-🔌 البورت: ${serverInfo.port}
-🎮 الإصدار: ${serverInfo.version}
-
-📌 *اختر ماذا تريد فعل:*`, {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                { text: "🤖 تشغيل بوتات", callback_data: `start_${serverInfo.id}` },
-                                { text: "❌ حذف", callback_data: `delete_${serverInfo.id}` }
-                            ],
-                            [{ text: "📋 العودة للقائمة", callback_data: "back_to_menu" }]
-                        ]
-                    }
-                });
             }
+            
+            const serverInfo = {
+                id: Date.now(),
+                name: serverName,
+                ip: serverIP,
+                port: serverPort,
+                version: '1.21.132',
+                added: new Date().toLocaleString()
+            };
+            
+            userData[userId].servers.push(serverInfo);
+            
+            // رد سريع
+            await nextCtx.reply(`✅ *تمت الإضافة!*
+
+📛 السيرفر: ${serverName}
+🌐 IP: ${serverIP}:${serverPort}
+🎮 الإصدار: بيدروك 1.21.132
+
+الآن اضغط "▶️ تشغيل البوتات" لبدء التشغيل`, {
+                parse_mode: 'Markdown'
+            });
+            
+            // إظهار القائمة
+            showMainMenu(nextCtx);
+            
+        } else {
+            await nextCtx.reply('❌ *خطأ في التنسيق*
+
+📌 أرسل بهذا الشكل:
+اسم السيرفر IP
+
+مثال:
+سيرفرنا play.example.com', {
+                parse_mode: 'Markdown'
+            });
         }
-    });
+    }, { once: true }); // مرة واحدة فقط
 });
 
-// عرض سيرفراتي
-bot.action('my_servers', async (ctx) => {
-    await ctx.answerCbQuery();
+// 📋 عرض السيرفرات
+bot.hears('📋 سيرفراتي', async (ctx) => {
     const userId = ctx.from.id;
     
-    if (!userServers[userId] || userServers[userId].servers.length === 0) {
-        await ctx.editMessageText(`📭 *لا توجد سيرفرات*
+    if (!userData[userId] || userData[userId].servers.length === 0) {
+        await ctx.reply('📭 *لا توجد سيرفرات*
         
-لم تقم بإضافة أي سيرفرات بعد.
-اضغط على "إضافة سيرفر جديد" لبدء الإضافة.`, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "🌍 إضافة سيرفر", callback_data: "add_new_server" }],
-                    [{ text: "🔙 رجوع", callback_data: "back_to_menu" }]
-                ]
-            }
+اضغط "➕ أضف سيرفر" لإضافة أول سيرفر لك', {
+            parse_mode: 'Markdown'
         });
         return;
     }
     
-    let message = `📋 *سيرفراتي (${userServers[userId].servers.length})*\n\n`;
+    let message = `📋 *سيرفراتك (${userData[userId].servers.length})*\n\n`;
     
-    userServers[userId].servers.forEach((server, index) => {
-        const hasBots = activeBots[server.id] ? `🤖 ${activeBots[server.id].length} بوت` : '🛑 بدون بوتات';
-        message += `${index + 1}. *${server.name}*
-🌐 ${server.host}:${server.port}
-🎮 ${server.version}
-${hasBots}\n\n`;
-    });
-    
-    // أزرار السيرفرات
-    const buttons = userServers[userId].servers.map(server => [
-        { 
-            text: `🚀 ${server.name}`, 
-            callback_data: `server_${server.id}` 
-        }
-    ]);
-    
-    buttons.push([{ text: "🔙 رجوع", callback_data: "back_to_menu" }]);
-    
-    await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: buttons
-        }
-    });
-});
-
-// عرض تفاصيل سيرفر
-bot.action(/^server_/, async (ctx) => {
-    await ctx.answerCbQuery();
-    const serverId = ctx.match.input.split('_')[1];
-    const userId = ctx.from.id;
-    
-    const server = userServers[userId].servers.find(s => s.id == serverId);
-    
-    if (!server) {
-        await ctx.editMessageText("❌ السيرفر غير موجود", {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "🔙 رجوع", callback_data: "my_servers" }]
-                ]
-            }
-        });
-        return;
-    }
-    
-    const serverBots = activeBots[serverId] || [];
-    
-    await ctx.editMessageText(`🎮 *${server.name}*
-    
-📡 *المعلومات:*
-🌐 الأيبي: ${server.host}
-🔌 البورت: ${server.port}
-🎮 الإصدار: ${server.version}
-📅 أضيف في: ${new Date(server.addedAt).toLocaleDateString()}
-
-🤖 *البوتات النشطة:* ${serverBots.length}`, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "🤖 تشغيل 2 بوت", callback_data: `start2_${serverId}` },
-                    { text: "🤖 تشغيل 5 بوت", callback_data: `start5_${serverId}` }
-                ],
-                [
-                    { text: serverBots.length > 0 ? "🛑 إيقاف البوتات" : "⚡ لا توجد بوتات", 
-                      callback_data: `stop_${serverId}`,
-                      disabled: serverBots.length === 0 }
-                ],
-                [
-                    { text: "✏️ تعديل", callback_data: `edit_${serverId}` },
-                    { text: "🗑️ حذف", callback_data: `delete_${serverId}` }
-                ],
-                [{ text: "🔙 رجوع", callback_data: "my_servers" }]
-            ]
-        }
-    });
-});
-
-// تشغيل البوتات
-bot.action(/^start/, async (ctx) => {
-    await ctx.answerCbQuery();
-    const parts = ctx.match.input.split('_');
-    const count = parts[0] === 'start2' ? 2 : parts[0] === 'start5' ? 5 : 1;
-    const serverId = parts[1];
-    const userId = ctx.from.id;
-    
-    const server = userServers[userId].servers.find(s => s.id == serverId);
-    
-    if (!server) {
-        await ctx.reply("❌ السيرفر غير موجود");
-        return;
-    }
-    
-    await ctx.editMessageText(`🚀 جاري تشغيل ${count} بوت لسيرفر ${server.name}...`);
-    
-    // إيقاف البوتات القديمة إن وجدت
-    if (activeBots[serverId]) {
-        activeBots[serverId].forEach(bot => {
-            try { bot.quit(); } catch {}
-        });
-    }
-    
-    // إنشاء بوتات جديدة
-    activeBots[serverId] = [];
-    for (let i = 1; i <= count; i++) {
-        setTimeout(() => {
-            const botInstance = createServerBot(serverId, server, `${server.name}_Bot${i}`);
-            if (botInstance) {
-                activeBots[serverId].push(botInstance);
-            }
-        }, i * 3000);
-    }
-    
-    setTimeout(async () => {
-        await ctx.editMessageText(`✅ *تم تشغيل البوتات بنجاح!*
+    userData[userId].servers.forEach((server, index) => {
+        const botStatus = activeBots[server.id] ? 
+            `🤖 ${activeBots[server.id].length} بوت نشط` : 
+            '🛑 بدون بوتات';
         
-🎮 السيرفر: ${server.name}
-🤖 عدد البوتات: ${count}
-🌐 ${server.host}:${server.port}
-
-✅ البوتات تعمل الآن وستبقى نشطة 24/7`, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "📋 العودة للسيرفر", callback_data: `server_${serverId}` }],
-                    [{ text: "🏠 الرئيسية", callback_data: "back_to_menu" }]
-                ]
-            }
-        });
-    }, count * 3000 + 2000);
-});
-
-// إيقاف البوتات
-bot.action(/^stop_/, async (ctx) => {
-    await ctx.answerCbQuery();
-    const serverId = ctx.match.input.split('_')[1];
-    const userId = ctx.from.id;
+        message += `*${index + 1}. ${server.name}*
+🌐 ${server.ip}:${server.port}
+${botStatus}
+⏰ ${server.added}\n\n`;
+    });
     
-    const server = userServers[userId].servers.find(s => s.id == serverId);
+    message += '\n📌 *للتحكم:* اضغط "▶️ تشغيل البوتات" أو "⏹️ إيقاف البوتات"';
     
-    if (!server) {
-        await ctx.reply("❌ السيرفر غير موجود");
-        return;
-    }
-    
-    if (activeBots[serverId] && activeBots[serverId].length > 0) {
-        // إيقاف جميع البوتات
-        activeBots[serverId].forEach(bot => {
-            try { bot.quit(); } catch {}
-        });
-        activeBots[serverId] = [];
-        
-        await ctx.editMessageText(`✅ *تم إيقاف جميع البوتات*
-        
-🎮 السيرفر: ${server.name}
-🛑 توقف: جميع البوتات`, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "📋 العودة للسيرفر", callback_data: `server_${serverId}` }],
-                    [{ text: "🏠 الرئيسية", callback_data: "back_to_menu" }]
-                ]
-            }
-        });
-    }
-});
-
-// حذف سيرفر
-bot.action(/^delete_/, async (ctx) => {
-    await ctx.answerCbQuery();
-    const serverId = ctx.match.input.split('_')[1];
-    const userId = ctx.from.id;
-    
-    // إيقاف البوتات إن وجدت
-    if (activeBots[serverId]) {
-        activeBots[serverId].forEach(bot => {
-            try { bot.quit(); } catch {}
-        });
-        delete activeBots[serverId];
-    }
-    
-    // حذف السيرفر
-    userServers[userId].servers = userServers[userId].servers.filter(s => s.id != serverId);
-    
-    await ctx.editMessageText(`🗑️ *تم حذف السيرفر بنجاح*
-    
-✅ تم إزالة السيرفر من قائمتك
-🛑 تم إيقاف جميع البوتات المرتبطة به`, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "📋 سيرفراتي", callback_data: "my_servers" }],
-                [{ text: "🏠 الرئيسية", callback_data: "back_to_menu" }]
-            ]
-        }
+    await ctx.reply(message, {
+        parse_mode: 'Markdown'
     });
 });
 
-// العودة للقائمة
-bot.action('back_to_menu', async (ctx) => {
-    await ctx.answerCbQuery();
-    const userId = ctx.from.id;
-    await ctx.deleteMessage();
-    await showAddServerMenu(ctx, userId);
-});
-
-// تشغيل البوتات لجميع السيرفرات
-bot.action('start_bots', async (ctx) => {
-    await ctx.answerCbQuery();
+// ▶️ تشغيل البوتات لجميع السيرفرات
+bot.hears('▶️ تشغيل البوتات', async (ctx) => {
     const userId = ctx.from.id;
     
-    if (!userServers[userId] || userServers[userId].servers.length === 0) {
-        await ctx.reply("❌ لا توجد سيرفرات لبدء البوتات");
+    if (!userData[userId] || userData[userId].servers.length === 0) {
+        await ctx.reply('❌ *لا توجد سيرفرات*
+        
+أضف سيرفر أولاً باستخدام "➕ أضف سيرفر"', {
+            parse_mode: 'Markdown'
+        });
         return;
     }
     
-    await ctx.editMessageText("🚀 جاري تشغيل البوتات لجميع السيرفرات...");
+    await ctx.reply('🚀 *جاري تشغيل البوتات...*
     
-    let startedCount = 0;
-    for (const server of userServers[userId].servers) {
-        if (!activeBots[server.id] || activeBots[server.id].length === 0) {
-            activeBots[server.id] = [];
-            for (let i = 1; i <= 2; i++) {
-                const botInstance = createServerBot(server.id, server, `${server.name}_AutoBot${i}`);
-                if (botInstance) {
-                    activeBots[server.id].push(botInstance);
-                }
+⏳ سيتم تشغيل بوتين لكل سيرفر
+🔄 قد يستغرق بضع ثوانٍ', {
+        parse_mode: 'Markdown'
+    });
+    
+    let totalBots = 0;
+    let startedServers = 0;
+    
+    // تشغيل البوتات لكل سيرفر
+    for (const server of userData[userId].servers) {
+        // إيقاف أي بوتات قديمة
+        if (activeBots[server.id]) {
+            activeBots[server.id].forEach(bot => {
+                try { bot.instance.quit(); } catch {}
+            });
+        }
+        
+        // إنشاء بوتين جديدين
+        activeBots[server.id] = [];
+        for (let i = 1; i <= 2; i++) {
+            const newBot = createSimpleBot(server, i);
+            if (newBot) {
+                activeBots[server.id].push(newBot);
+                totalBots++;
             }
-            startedCount++;
+        }
+        
+        if (activeBots[server.id].length > 0) {
+            startedServers++;
         }
     }
     
-    await ctx.editMessageText(`✅ *تم تشغيل البوتات*
-    
-🎮 عدد السيرفرات: ${userServers[userId].servers.length}
-🤖 تم البدء في: ${startedCount} سيرفر
-✅ البوتات تعمل الآن على جميع السيرفرات`, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "📋 سيرفراتي", callback_data: "my_servers" }],
-                [{ text: "🏠 الرئيسية", callback_data: "back_to_menu" }]
-            ]
-        }
+    // النتيجة
+    await ctx.reply(`✅ *تم التشغيل بنجاح!*
+
+🎮 السيرفرات: ${startedServers}/${userData[userId].servers.length}
+🤖 البوتات: ${totalBots} بوت نشط
+⏰ الوقت: ${new Date().toLocaleTimeString()}
+
+✅ البوتات تعمل الآن وستبقى نشطة 24/7 تلقائياً`, {
+        parse_mode: 'Markdown'
     });
 });
 
-// إيقاف جميع البوتات
-bot.action('stop_bots', async (ctx) => {
-    await ctx.answerCbQuery();
+// ⏹️ إيقاف جميع البوتات
+bot.hears('⏹️ إيقاف البوتات', async (ctx) => {
     const userId = ctx.from.id;
     
-    let stoppedCount = 0;
+    let stoppedBots = 0;
+    let stoppedServers = 0;
+    
+    // إيقاف جميع البوتات
     for (const serverId in activeBots) {
         if (activeBots[serverId].length > 0) {
             activeBots[serverId].forEach(bot => {
-                try { bot.quit(); } catch {}
+                try { 
+                    bot.instance.quit();
+                    stoppedBots++;
+                } catch {}
             });
             activeBots[serverId] = [];
-            stoppedCount++;
+            stoppedServers++;
         }
     }
     
-    await ctx.editMessageText(`🛑 *تم إيقاف جميع البوتات*
+    if (stoppedBots > 0) {
+        await ctx.reply(`🛑 *تم الإيقاف*
+
+🤖 البوتات المتوقفة: ${stoppedBots}
+🎮 السيرفرات: ${stoppedServers}
+✅ تم إيقاف جميع البوتات`, {
+            parse_mode: 'Markdown'
+        });
+    } else {
+        await ctx.reply('ℹ️ *لا توجد بوتات نشطة*
+        
+اضغط "▶️ تشغيل البوتات" لبدء التشغيل', {
+            parse_mode: 'Markdown'
+        });
+    }
+});
+
+// 📊 حالة النظام
+bot.hears('📊 الحالة', async (ctx) => {
+    const userId = ctx.from.id;
     
-✅ تم إيقاف: ${stoppedCount} سيرفر
-🛑 جميع البوتات متوقفة الآن`, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "📋 سيرفراتي", callback_data: "my_servers" }],
-                [{ text: "🏠 الرئيسية", callback_data: "back_to_menu" }]
-            ]
+    let totalBots = 0;
+    let activeServers = 0;
+    
+    for (const serverId in activeBots) {
+        if (activeBots[serverId].length > 0) {
+            totalBots += activeBots[serverId].length;
+            activeServers++;
         }
+    }
+    
+    const serverCount = userData[userId] ? userData[userId].servers.length : 0;
+    
+    await ctx.reply(`📊 *حالة النظام الحالية*
+
+👤 المستخدم: ${ctx.from.first_name}
+🎮 السيرفرات: ${serverCount}
+🤖 البوتات النشطة: ${totalBots}
+🌐 السيرفرات النشطة: ${activeServers}
+🕒 الوقت: ${new Date().toLocaleTimeString()}
+
+${totalBots > 0 ? '✅ النظام يعمل بشكل طبيعي' : '⚠️ لا توجد بوتات نشطة'}`, {
+        parse_mode: 'Markdown'
     });
 });
 
-// تشغيل البوت
-console.log('🚀 بدء تشغيل نظام إدارة سيرفرات بيدروك...');
+// 🆘 المساعدة
+bot.hears('🆘 المساعدة', (ctx) => {
+    ctx.reply(`🆘 *دليل استخدام سريع*
+
+1. *➕ أضف سيرفر*
+   - اكتب اسم السيرفر ثم IP
+   - مثال: "سيرفري play.pedrock.net"
+
+2. *▶️ تشغيل البوتات*
+   - يشغل بوتين لكل سيرفر
+   - يعمل تلقائياً 24/7
+
+3. *⏹️ إيقاف البوتات*
+   - يوقف جميع البوتات
+
+4. *📋 سيرفراتي*
+   - يعرض جميع سيرفراتك
+
+📌 *ملاحظة:* البوتات تعمل على إصدار بيدروك 1.21.x`, {
+        parse_mode: 'Markdown'
+    });
+});
+
+// 🚀 أمر البدء
+bot.start((ctx) => {
+    const welcome = `🎮 *أهلاً بك ${ctx.from.first_name}!*
+
+هذا النظام البسيط يحافظ على سيرفرات بيدروك نشطة 24/7 باستخدام بوتات وهمية.
+
+📌 *ثلاث خطوات فقط:*
+1. اضغط "➕ أضف سيرفر"
+2. أرسل اسم السيرفر و IP
+3. اضغط "▶️ تشغيل البوتات"
+
+✅ *ومبروك!* سيرفرك سيبقى مفتوحاً دائماً.
+
+👇 اختر من الأزرار بالأسفل:`;
+    
+    showMainMenu(ctx);
+    
+    setTimeout(() => {
+        ctx.reply(welcome, { parse_mode: 'Markdown' });
+    }, 500);
+});
+
+// 🏃‍♂️ تشغيل البوت
+console.log('🚀 بدء نظام بيدروك البسيط...');
 bot.launch()
     .then(() => {
-        console.log('✅ النظام يعمل بنجاح!');
+        console.log('✅ النظام يعمل!');
+        console.log('📌 أرسل /start في التلجرام للبدء');
     })
     .catch(err => {
-        console.error('❌ خطأ:', err);
+        console.error('❌ خطأ:', err.message);
     });
 
-// إغلاق نظيف
+// 🔧 إغلاق نظيف
 process.once('SIGINT', () => {
     console.log('\n🛑 إيقاف النظام...');
     
     // إيقاف جميع البوتات
     for (const serverId in activeBots) {
-        activeBots[serverId].forEach(bot => {
-            try { bot.quit(); } catch {}
+        activeBots[serverId]?.forEach(bot => {
+            try { bot.instance.quit(); } catch {}
         });
     }
     
