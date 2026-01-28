@@ -7,7 +7,12 @@ http.createServer((req, res) => res.end('OK')).listen(process.env.PORT || 3000)
 
 /* Telegram Bot */
 const bot = new Telegraf('8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU')
-bot.use(session())
+
+// ✅ الإصلاح: تهيئة الجلسة لتعمل مع الـ Context بشكل صحيح
+bot.use(session({
+  property: 'session',
+  getSessionKey: (ctx) => ctx.from && ctx.chat && `${ctx.from.id}:${ctx.chat.id}`
+}))
 
 let client = null
 let server = null
@@ -33,16 +38,18 @@ bot.start(ctx => {
 
 /* ➕ إضافة سيرفر */
 bot.action('add', ctx => {
-  ctx.answerCbQuery()
-  ctx.session.step = 'ip'
+  ctx.answerCbQuery().catch(() => {})
+  // ✅ التأكد من تهيئة الجلسة
+  ctx.session = { step: 'ip' }
   ctx.reply('🌐 أرسل IP السيرفر:')
 })
 
 bot.on('text', ctx => {
-  if (!ctx.session?.step) return
+  // ✅ فحص الجلسة بدقة
+  if (!ctx.session || !ctx.session.step) return
 
   if (ctx.session.step === 'ip') {
-    ctx.session.ip = ctx.message.text
+    ctx.session.ip = ctx.message.text.trim()
     ctx.session.step = 'port'
     return ctx.reply('🔢 أرسل Port:')
   }
@@ -57,9 +64,9 @@ bot.on('text', ctx => {
     server = {
       host: ctx.session.ip,
       port: ctx.session.port,
-      username: ctx.message.text
+      username: ctx.message.text.trim()
     }
-    ctx.session = null
+    ctx.session = null // تنظيف الجلسة بعد الحفظ
     ctx.reply(
       '✅ تم حفظ السيرفر',
       { reply_markup: menu().reply_markup }
@@ -69,7 +76,7 @@ bot.on('text', ctx => {
 
 /* ▶️ دخول */
 bot.action('connect', ctx => {
-  ctx.answerCbQuery()
+  ctx.answerCbQuery().catch(() => {})
 
   if (!server)
     return ctx.reply('⚠️ أضف سيرفر أولاً', { reply_markup: menu().reply_markup })
@@ -121,7 +128,7 @@ bot.action('connect', ctx => {
 
 /* ⏹️ خروج */
 bot.action('disconnect', ctx => {
-  ctx.answerCbQuery()
+  ctx.answerCbQuery().catch(() => {})
   if (!client)
     return ctx.reply('⚠️ غير متصل', { reply_markup: menu().reply_markup })
 
@@ -135,7 +142,7 @@ bot.action('disconnect', ctx => {
 
 /* 📊 الحالة */
 bot.action('status', ctx => {
-  ctx.answerCbQuery()
+  ctx.answerCbQuery().catch(() => {})
   ctx.reply(
     client ? '🟢 البوت متصل' : '🔴 البوت غير متصل',
     { reply_markup: menu().reply_markup }
@@ -152,5 +159,6 @@ function cleanup () {
 process.on('uncaughtException', e => console.log(e))
 process.on('unhandledRejection', e => console.log(e))
 
-bot.launch()
+// ✅ تنظيف التحديثات المعلقة لحل مشكلة "لا يرد"
+bot.launch({ dropPendingUpdates: true })
 console.log('✅ Bot Running')
