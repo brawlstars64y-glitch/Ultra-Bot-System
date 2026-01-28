@@ -8,20 +8,6 @@ http.createServer((req, res) => res.end('OK')).listen(process.env.PORT || 3000)
 /* Telegram Bot */
 const bot = new Telegraf('8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU')
 
-/* 📢 قنوات الاشتراك الإجباري */
-const REQUIRED_CHANNELS = [
-  {
-    id: '@minecrafmodss12',
-    name: 'Minecraft Mods',
-    url: 'https://t.me/minecrafmodss12'
-  },
-  {
-    id: '@aternosbot24',
-    name: 'Aternos Bot',
-    url: 'https://t.me/aternosbot24'
-  }
-]
-
 /* 🎮 جميع إصدارات Bedrock من 1.8 إلى 1.21.132 */
 const SUPPORTED_VERSIONS = [
   // الإصدارات الحديثة 1.21.x
@@ -75,8 +61,7 @@ bot.use(session({
     currentServer: null,
     step: null,
     action: null,
-    tempServer: {},
-    hasCheckedSubscription: false
+    tempServer: {}
   })
 }))
 
@@ -139,7 +124,7 @@ function versionMenu() {
   const chunkSize = 3
   
   // عرض الإصدارات الحديثة أولاً
-  const recentVersions = SUPPORTED_VERSIONS.slice(0, 15) // آخر 15 إصدار
+  const recentVersions = SUPPORTED_VERSIONS.slice(0, 15)
   
   for (let i = 0; i < recentVersions.length; i += chunkSize) {
     const chunk = recentVersions.slice(i, i + chunkSize)
@@ -161,69 +146,8 @@ function versionMenu() {
   return Markup.inlineKeyboard(rows)
 }
 
-/* 📢 قائمة الاشتراك الإجباري */
-function subscriptionMenu() {
-  const buttons = REQUIRED_CHANNELS.map(channel => [
-    Markup.button.url(`✅ ${channel.name}`, channel.url)
-  ])
-  buttons.push([Markup.button.callback('🔃 تحقق من الاشتراك', 'check_subscription')])
-  return Markup.inlineKeyboard(buttons)
-}
-
-/* ✅ التحقق من الاشتراك في القنوات */
-async function checkSubscription(ctx) {
-  try {
-    const userId = ctx.from.id
-    
-    for (const channel of REQUIRED_CHANNELS) {
-      try {
-        const chatMember = await ctx.telegram.getChatMember(channel.id, userId)
-        const isMember = ['member', 'administrator', 'creator'].includes(chatMember.status)
-        
-        if (!isMember) {
-          return {
-            success: false,
-            missingChannel: channel,
-            message: `⚠️ يجب الاشتراك في ${channel.name} أولاً`
-          }
-        }
-      } catch (error) {
-        console.error(`خطأ في التحقق من ${channel.name}:`, error)
-        return {
-          success: false,
-          missingChannel: channel,
-          message: `❌ لا يمكن التحقق من ${channel.name}`
-        }
-      }
-    }
-    
-    return { success: true }
-  } catch (error) {
-    console.error('خطأ في التحقق:', error)
-    return { success: false, message: '❌ حدث خطأ في التحقق' }
-  }
-}
-
 /* 🚀 بدء البوت */
-bot.start(async (ctx) => {
-  const subscription = await checkSubscription(ctx)
-  
-  if (!subscription.success) {
-    ctx.session.hasCheckedSubscription = false
-    return ctx.reply(
-      `📢 **اشتراك إجباري**\n\n` +
-      `يجب الاشتراك في القنوات التالية:\n\n` +
-      `📌 ${REQUIRED_CHANNELS[0].name}\n` +
-      `📌 ${REQUIRED_CHANNELS[1].name}\n\n` +
-      `بعد الاشتراك اضغط: 🔃 تحقق`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: subscriptionMenu().reply_markup
-      }
-    )
-  }
-  
-  ctx.session.hasCheckedSubscription = true
+bot.start((ctx) => {
   ctx.reply(
     `🎮 **MaxBlack Bot - جميع إصدارات Bedrock**\n\n` +
     `✅ يدعم **${SUPPORTED_VERSIONS.length}** إصدار\n` +
@@ -240,20 +164,6 @@ bot.start(async (ctx) => {
 /* 🔧 إعدادات متقدمة */
 bot.action('advanced_settings', async (ctx) => {
   await ctx.answerCbQuery()
-  
-  const subscription = await checkSubscription(ctx)
-  if (!subscription.success) {
-    ctx.session.hasCheckedSubscription = false
-    return ctx.reply(
-      `📢 **يجب الاشتراك أولاً**`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: subscriptionMenu().reply_markup
-      }
-    )
-  }
-  
-  ctx.session.hasCheckedSubscription = true
   
   ctx.reply(
     `🔧 **الإعدادات المتقدمة**\n\n` +
@@ -305,7 +215,6 @@ bot.action('select_version', async (ctx) => {
 bot.action('show_all_versions', async (ctx) => {
   await ctx.answerCbQuery()
   
-  // عرض أول 30 إصدار فقط
   const displayVersions = SUPPORTED_VERSIONS.slice(0, 30)
   const versionList = displayVersions.map((v, i) => `${i+1}. ${v}`).join('\n')
   
@@ -320,74 +229,9 @@ bot.action('show_all_versions', async (ctx) => {
   )
 })
 
-/* 🔃 تحقق من الاشتراك */
-bot.action('check_subscription', async (ctx) => {
-  await ctx.answerCbQuery()
-  
-  const subscription = await checkSubscription(ctx)
-  
-  if (!subscription.success) {
-    return ctx.reply(
-      `❌ **لم يتم الاشتراك بعد**\n\n` +
-      `يجب الاشتراك في:\n\n` +
-      `📌 ${REQUIRED_CHANNELS[0].name}\n` +
-      `📌 ${REQUIRED_CHANNELS[1].name}\n\n` +
-      `اضغط على الأزرار للاشتراك ثم اضغط تحقق`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: subscriptionMenu().reply_markup
-      }
-    )
-  }
-  
-  ctx.session.hasCheckedSubscription = true
-  ctx.reply('✅ **تم التحقق بنجاح!**\n\nاختر من القائمة:', {
-    parse_mode: 'Markdown',
-    reply_markup: mainMenu().reply_markup
-  })
-})
-
-/* 🔥 وسيط للتحقق من الاشتراك */
-const requireSubscription = async (ctx, next) => {
-  if (!ctx.session.hasCheckedSubscription) {
-    const subscription = await checkSubscription(ctx)
-    
-    if (!subscription.success) {
-      await ctx.reply(
-        `📢 **يجب التحقق من الاشتراك أولاً**\n\n` +
-        `اضغط على زر التحقق بعد الاشتراك:`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: subscriptionMenu().reply_markup
-        }
-      )
-      return
-    }
-    
-    ctx.session.hasCheckedSubscription = true
-  }
-  
-  return next()
-}
-
 /* ➕ إضافة سيرفر */
 bot.action('add_server', async (ctx) => {
   await ctx.answerCbQuery()
-  
-  const subscription = await checkSubscription(ctx)
-  if (!subscription.success) {
-    ctx.session.hasCheckedSubscription = false
-    return ctx.reply(
-      `📢 **يجب الاشتراك أولاً**\n\n` +
-      `اضغط على زر التحقق بعد الاشتراك:`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: subscriptionMenu().reply_markup
-      }
-    )
-  }
-  
-  ctx.session.hasCheckedSubscription = true
   ctx.session.step = 'server_name'
   ctx.session.action = 'add'
   ctx.session.tempServer = {}
@@ -395,7 +239,7 @@ bot.action('add_server', async (ctx) => {
 })
 
 /* 📋 قائمة السيرفرات */
-bot.action('list_servers', requireSubscription, async (ctx) => {
+bot.action('list_servers', async (ctx) => {
   await ctx.answerCbQuery()
   
   if (!ctx.session.servers || ctx.session.servers.length === 0) {
@@ -419,7 +263,7 @@ bot.action('list_servers', requireSubscription, async (ctx) => {
 })
 
 /* 🗑️ حذف سيرفر */
-bot.action('delete_server', requireSubscription, async (ctx) => {
+bot.action('delete_server', async (ctx) => {
   await ctx.answerCbQuery()
   
   if (!ctx.session.servers || ctx.session.servers.length === 0) {
@@ -434,7 +278,7 @@ bot.action('delete_server', requireSubscription, async (ctx) => {
 })
 
 /* 🗑️ حذف سيرفر محدد */
-bot.action(/delete_(\d+)/, requireSubscription, async (ctx) => {
+bot.action(/delete_(\d+)/, async (ctx) => {
   const index = parseInt(ctx.match[1])
   await ctx.answerCbQuery()
   
@@ -467,7 +311,7 @@ bot.action(/delete_(\d+)/, requireSubscription, async (ctx) => {
 })
 
 /* 🗑️ حذف جميع السيرفرات */
-bot.action('delete_all', requireSubscription, async (ctx) => {
+bot.action('delete_all', async (ctx) => {
   await ctx.answerCbQuery()
   
   if (!ctx.session.servers || ctx.session.servers.length === 0) {
@@ -486,7 +330,7 @@ bot.action('delete_all', requireSubscription, async (ctx) => {
 })
 
 /* ✅ تأكيد حذف الكل */
-bot.action('confirm_delete_all', requireSubscription, async (ctx) => {
+bot.action('confirm_delete_all', async (ctx) => {
   await ctx.answerCbQuery()
   const totalServers = ctx.session.servers ? ctx.session.servers.length : 0
   
@@ -510,7 +354,7 @@ bot.action('confirm_delete_all', requireSubscription, async (ctx) => {
 })
 
 /* ⚙️ إعدادات AFK */
-bot.action('afk_settings', requireSubscription, async (ctx) => {
+bot.action('afk_settings', async (ctx) => {
   await ctx.answerCbQuery()
   ctx.reply('⚙️ إعدادات AFK:', {
     reply_markup: afkMenu().reply_markup
@@ -528,24 +372,9 @@ bot.action('back_to_main', async (ctx) => {
   })
 })
 
-/* 🔥 الإصلاح: معالجة الرسائل النصية */
+/* ✍️ معالجة الرسائل النصية */
 bot.on('text', async (ctx) => {
   console.log('📥 رسالة نصية:', ctx.message.text)
-  
-  if (!ctx.session.hasCheckedSubscription) {
-    const subscription = await checkSubscription(ctx)
-    if (!subscription.success) {
-      return ctx.reply(
-        `📢 **يجب التحقق من الاشتراك أولاً**\n\n` +
-        `اضغط على زر التحقق بعد الاشتراك:`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: subscriptionMenu().reply_markup
-        }
-      )
-    }
-    ctx.session.hasCheckedSubscription = true
-  }
 
   if (!ctx.session || !ctx.session.step) {
     console.log('⚠️ لا توجد خطوة نشطة')
@@ -588,7 +417,7 @@ bot.on('text', async (ctx) => {
           host: ctx.session.tempServer.host,
           port: ctx.session.tempServer.port,
           username: ctx.session.tempServer.username || `Bot_${Date.now()}`,
-          version: null, // ⭐ الإصلاح: null بدلاً من false
+          version: null,
           created: new Date().toISOString()
         }
         
@@ -637,7 +466,7 @@ bot.on('text', async (ctx) => {
 })
 
 /* 🔥 اختيار السيرفر */
-bot.action(/select_(\d+)/, requireSubscription, async (ctx) => {
+bot.action(/select_(\d+)/, async (ctx) => {
   const index = parseInt(ctx.match[1])
   console.log(`🔘 محاولة اختيار سيرفر رقم: ${index}`)
   
@@ -684,14 +513,13 @@ bot.action(/version_(.+)/, async (ctx) => {
   
   const server = ctx.session.currentServer
   
-  // تحديث السيرفر في القائمة
   const serverIndex = ctx.session.servers.findIndex(s => 
     s.host === server.host && s.port === server.port
   )
   
   if (serverIndex !== -1) {
     if (version === 'auto') {
-      ctx.session.servers[serverIndex].version = null // ⭐ الإصلاح: null بدلاً من false
+      ctx.session.servers[serverIndex].version = null
       ctx.session.currentServer.version = null
     } else {
       ctx.session.servers[serverIndex].version = version
@@ -729,7 +557,6 @@ bot.action('detect_version', async (ctx) => {
   ctx.reply(`🔄 جاري محاولة الاتصال لاكتشاف إصدار ${server.name}...`)
   
   try {
-    // محاولة الاتصال مع إصدارات شائعة
     const commonVersions = ['1.21.130', '1.20.80', '1.19.84', '1.18.33']
     let detectedVersion = null
     
@@ -829,8 +656,8 @@ bot.action('list_versions', async (ctx) => {
   )
 })
 
-/* ⭐ الإصلاح: دخول للسيرفر مع إصلاح مشكلة الإصدار */
-bot.action('connect', requireSubscription, async (ctx) => {
+/* ⭐ دخول للسيرفر */
+bot.action('connect', async (ctx) => {
   await ctx.answerCbQuery('جاري الاتصال...')
 
   if (!ctx.session.currentServer) {
@@ -870,13 +697,11 @@ bot.action('connect', requireSubscription, async (ctx) => {
       profilesFolder: './profiles'
     }
 
-    // ⭐⭐ الإصلاح الحاسم: تحديد إصدار افتراضي إذا لم يكن محدداً
     if (server.version) {
       options.version = server.version
       console.log(`🎮 استخدام الإصدار المحدد: ${server.version}`)
     } else {
-      // ⭐⭐ استخدام إصدار افتراضي (1.21.130) بدلاً من false
-      options.version = '1.21.130' // ⭐ الإصلاح: إصدار محدد بدلاً من false
+      options.version = '1.21.130'
       console.log('🔄 استخدام الإصدار الافتراضي: 1.21.130')
     }
 
@@ -893,7 +718,6 @@ bot.action('connect', requireSubscription, async (ctx) => {
       } catch (error) {
         retryCount++
         
-        // إذا فشل مع 1.21.130، جرب إصداراً أقدم
         if (retryCount <= maxRetries && !server.version) {
           const fallbackVersions = ['1.20.80', '1.19.84']
           const fallbackVersion = fallbackVersions[retryCount - 1]
@@ -962,7 +786,6 @@ bot.action('connect', requireSubscription, async (ctx) => {
       
       let errorMessage = `❌ **فشل الاتصال بـ ${server.name}**\n\nالسبب: ${err.message}\n\n`
       
-      // اقتراحات ذكية
       if (err.message.includes('version') || err.message.includes('unsupported')) {
         errorMessage += `💡 **الحلول المقترحة:**\n`
         errorMessage += `1. اذهب إلى 🔧 إعدادات متقدمة\n`
@@ -1002,7 +825,7 @@ bot.action('connect', requireSubscription, async (ctx) => {
 })
 
 /* ⏹️ خروج من السيرفر */
-bot.action('disconnect', requireSubscription, async (ctx) => {
+bot.action('disconnect', async (ctx) => {
   await ctx.answerCbQuery()
 
   if (!ctx.session.currentServer) {
@@ -1024,7 +847,7 @@ bot.action('disconnect', requireSubscription, async (ctx) => {
 })
 
 /* 🔄 تشغيل AFK */
-bot.action('afk_on', requireSubscription, async (ctx) => {
+bot.action('afk_on', async (ctx) => {
   await ctx.answerCbQuery()
   
   if (!ctx.session.currentServer) {
@@ -1071,7 +894,7 @@ bot.action('afk_on', requireSubscription, async (ctx) => {
 })
 
 /* ⏸️ إيقاف AFK */
-bot.action('afk_off', requireSubscription, async (ctx) => {
+bot.action('afk_off', async (ctx) => {
   await ctx.answerCbQuery()
   
   if (!ctx.session.currentServer) {
@@ -1091,7 +914,7 @@ bot.action('afk_off', requireSubscription, async (ctx) => {
 })
 
 /* 📊 الحالة */
-bot.action('status', requireSubscription, async (ctx) => {
+bot.action('status', async (ctx) => {
   await ctx.answerCbQuery()
 
   let statusMessage = '📊 **حالة البوت:**\n\n'
@@ -1198,26 +1021,13 @@ bot.launch({
   console.log('🎮 **دعم كامل لكل إصدارات Bedrock**')
   console.log(`📋 عدد الإصدارات المدعومة: ${SUPPORTED_VERSIONS.length}`)
   console.log(`🎯 الإصدار الافتراضي: 1.21.130`)
-  console.log('📢 الاشتراك الإجباري مفعل')
-  console.log('🔧 تم إصلاح مشكلة الإصدار غير المدعوم')
+  console.log('🔓 **بدون اشتراك إجباري**')
+  console.log('🔧 النظام جاهز للاستخدام!')
   console.log('===========================')
 })
 
 /* 📢 أوامر نصية */
-bot.command('channels', async (ctx) => {
-  ctx.reply(
-    `📢 **قنوات الاشتراك الإجباري:**\n\n` +
-    `📌 ${REQUIRED_CHANNELS[0].name}\n🔗 ${REQUIRED_CHANNELS[0].url}\n\n` +
-    `📌 ${REQUIRED_CHANNELS[1].name}\n🔗 ${REQUIRED_CHANNELS[1].url}\n\n` +
-    `يجب الاشتراك في القنوات لاستخدام البوت.`,
-    {
-      parse_mode: 'Markdown',
-      reply_markup: subscriptionMenu().reply_markup
-    }
-  )
-})
-
-bot.command('setversion', requireSubscription, async (ctx) => {
+bot.command('setversion', async (ctx) => {
   if (!ctx.session.currentServer) {
     return ctx.reply('⚠️ اختر سيرفراً أولاً.')
   }
@@ -1263,28 +1073,8 @@ bot.command('versions', async (ctx) => {
   )
 })
 
-bot.command('check', async (ctx) => {
-  const subscription = await checkSubscription(ctx)
-  
-  if (subscription.success) {
-    ctx.session.hasCheckedSubscription = true
-    ctx.reply('✅ **أنت مشترك في جميع القنوات!**', {
-      parse_mode: 'Markdown',
-      reply_markup: mainMenu().reply_markup
-    })
-  } else {
-    ctx.reply(
-      `❌ **يجب الاشتراك في القنوات أولاً**`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: subscriptionMenu().reply_markup
-      }
-    )
-  }
-})
-
 // أمر لاختبار النظام
-bot.command('test', requireSubscription, async (ctx) => {
+bot.command('test', async (ctx) => {
   const testInfo = {
     servers: ctx.session.servers ? ctx.session.servers.length : 0,
     currentServer: ctx.session.currentServer ? {
@@ -1303,6 +1093,33 @@ bot.command('test', requireSubscription, async (ctx) => {
     `🔗 اتصالات نشطة: ${testInfo.connections}\n` +
     `📋 إصدارات مدعومة: ${testInfo.supportedVersions}\n` +
     `🎯 الإصدار الافتراضي: 1.21.130`,
+    {
+      parse_mode: 'Markdown'
+    }
+  )
+})
+
+bot.command('help', (ctx) => {
+  ctx.reply(
+    `🎮 **أوامر البوت:**\n\n` +
+    `🏠 **القائمة الرئيسية:**\n` +
+    `➕ إضافة سيرفر جديد\n` +
+    `📋 عرض قائمة السيرفرات\n` +
+    `🗑️ حذف سيرفر من القائمة\n` +
+    `▶️ الدخول للسيرفر المحدد\n` +
+    `⏹️ الخروج من السيرفر\n` +
+    `⚙️ إعدادات AFK\n` +
+    `🔧 إعدادات متقدمة (تغيير الإصدار)\n` +
+    `📊 حالة البوت والسيرفرات\n\n` +
+    `📝 **أوامر نصية:**\n` +
+    `/setversion 1.21.130 - تغيير إصدار السيرفر\n` +
+    `/versions - عرض الإصدارات المدعومة\n` +
+    `/test - اختبار حالة النظام\n` +
+    `/help - عرض هذه المساعدة\n\n` +
+    `🎯 **نصائح:**\n` +
+    `• استخدم إصدار 1.21.130 للسيرفرات الحديثة\n` +
+    `• إذا فشل الاتصال، جرب إصداراً أقدم\n` +
+    `• يمكنك اكتشاف الإصدار من الإعدادات المتقدمة`,
     {
       parse_mode: 'Markdown'
     }
