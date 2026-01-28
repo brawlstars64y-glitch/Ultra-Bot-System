@@ -1,17 +1,19 @@
 {
-  "name": "ultra-bot-system",
+  "name": "simple-telegram-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Simple Telegram Bot",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "dependencies": {
-    "telegraf": "^4.16.3",
-    "bedrock-protocol": "latest",
-    "edit-json-file": "latest"
+    "telegraf": "^4.16.3"
   },
-  "engines": {
-    "node": "20.x"
-  }
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "keywords": ["telegram", "bot", "nodejs"],
+  "author": "",
+  "license": "MIT"
 }
