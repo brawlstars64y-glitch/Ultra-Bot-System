@@ -15,16 +15,15 @@ const token = process.env.BOT_TOKEN || '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQX
 const db = editJsonFile(`${__dirname}/database.json`, { autosave: true });
 const tgBot = new Telegraf(token);
 
-// 📢 قائمة القنوات (الاشتراك الثلاثي)
+// 📢 قائمة القنوات (تمت العودة للقناتين فقط)
 const CHANNELS = [
     { id: '@minecrafmodss12', link: 'https://t.me/minecrafmodss12' },
-    { id: '@aternosbot24', link: 'https://t.me/aternosbot24' },
-    { id: '@Player_bo', link: 'https://t.me/Player_bo' }
+    { id: '@aternosbot24', link: 'https://t.me/aternosbot24' }
 ];
 const DEVELOPER_LINK = 'https://t.me/uuuaaw';
 
 let activeClients = {};
-let afkIntervals = {}; // لتخزين توقيت مانع الطرد لكل مستخدم
+let afkIntervals = {}; // لتخزين مانع الطرد لكل مستخدم
 
 // 🔍 فحص الاشتراك الإجباري
 async function checkAllSubscriptions(ctx) {
@@ -51,11 +50,10 @@ tgBot.start(async (ctx) => {
     if (await checkAllSubscriptions(ctx)) {
         ctx.replyWithMarkdown(`👋 *أهلاً بك يا بطل في نظام MaxBlack*`, mainButtons(ctx));
     } else {
-        ctx.reply('⚠️ *يجب الاشتراك في القنوات الثلاث لتفعيل البوت:*', Markup.inlineKeyboard([
+        ctx.reply('⚠️ *يجب الاشتراك في القنوات لتفعيل البوت:*', Markup.inlineKeyboard([
             [Markup.button.url('📢 القناة الأولى', CHANNELS[0].link)],
             [Markup.button.url('📢 القناة الثانية', CHANNELS[1].link)],
-            [Markup.button.url('📢 القناة الثالثة', CHANNELS[2].link)],
-            [Markup.button.callback('✅ تم الاشتراك في الكل', 'main_menu')]
+            [Markup.button.callback('✅ تم الاشتراك', 'main_menu')]
         ]));
     }
 });
@@ -64,11 +62,11 @@ tgBot.action('main_menu', async (ctx) => {
     if (await checkAllSubscriptions(ctx)) {
         ctx.editMessageText('🔮 *قائمة التحكم الرئيسية:*', { parse_mode: 'Markdown', ...mainButtons(ctx) });
     } else {
-        ctx.answerCbQuery('❌ لم تشترك في جميع القنوات بعد!', { show_alert: true });
+        ctx.answerCbQuery('❌ اشترك في القنوات أولاً!', { show_alert: true });
     }
 });
 
-// 📁 نظام السيرفرات المتعددة
+// 📁 نظام السيرفرات المتعددة (الحد الأقصى 3)
 tgBot.action('my_servers', async (ctx) => {
     const userId = ctx.from.id;
     const servers = db.get(`${userId}.servers`) || [];
@@ -100,12 +98,12 @@ tgBot.on('text', async (ctx) => {
             servers.push({ host: h.trim(), port: p.trim(), bot_name: "MaxBlack" });
             db.set(`${userId}.servers`, servers);
             db.set(`${userId}.state`, null);
-            ctx.reply(`✅ *تم حفظ السيرفر رقم ${servers.length}*`);
+            ctx.reply(`✅ *تم حفظ السيرفر رقم ${servers.length} بنجاح!*`);
         }
     }
 });
 
-// ⚙️ إدارة السيرفرات وتشغيل مانع الطرد
+// ⚙️ إدارة السيرفرات وتشغيل مانع الطرد (Anti-AFK)
 tgBot.action(/^manage_srv_(\d+)$/, (ctx) => {
     const index = ctx.match[1];
     const s = db.get(`${ctx.from.id}.servers`)[index];
@@ -121,8 +119,10 @@ tgBot.action(/^manage_srv_(\d+)$/, (ctx) => {
 tgBot.action(/^start_srv_(\d+)$/, async (ctx) => {
     const index = ctx.match[1];
     const userId = ctx.from.id;
-    const s = db.get(`${userId}.servers`)[index];
-    ctx.reply(`⏳ *جاري محاولة الاتصال بـ ${s.host}...*`);
+    const servers = db.get(`${userId}.servers`);
+    const s = servers[index];
+
+    ctx.reply(`⏳ *جاري محاولة الدخول بـ [ ${s.bot_name} ]...*`);
 
     try {
         if (activeClients[userId]) activeClients[userId].close();
@@ -133,25 +133,26 @@ tgBot.action(/^start_srv_(\d+)$/, async (ctx) => {
         });
 
         activeClients[userId].on('spawn', () => {
-            ctx.reply(`✅ *بوتك [ ${s.bot_name} ] دخل السيرفر بنجاح! تم تفعيل مانع الطرد 🛡️*`);
+            ctx.reply(`✅ *دخل البوت! تم تفعيل مانع الطرد 🛡️*`);
             
-            // 🔄 نظام مانع الطرد (Anti-AFK) يرسل إشارة كل 60 ثانية
+            // 🔄 نظام مانع الطرد (كل 60 ثانية إشارة حياة)
             afkIntervals[userId] = setInterval(() => {
                 if (activeClients[userId]) {
                     activeClients[userId].queue('text', {
                         type: 'chat', needs_translation: false, source_name: s.bot_name,
-                        xuid: '', platform_chat_id: '', message: '🛡️ MaxBlack System Active'
+                        xuid: '', platform_chat_id: '', message: '🛡️ Active'
                     });
                 }
             }, 60000);
         });
 
         activeClients[userId].on('error', (err) => {
-            ctx.reply(`❌ *انقطع الاتصال:* السيرفر مغلق أو قام بطرد البوت.`);
+            ctx.reply(`❌ *فشل:* السيرفر مغلق أو قام بطرد البوت.`);
             if (activeClients[userId]) activeClients[userId].close();
             if (afkIntervals[userId]) clearInterval(afkIntervals[userId]);
         });
-    } catch (e) { ctx.reply("❌ حدث خطأ في البيانات."); }
+
+    } catch (e) { ctx.reply("❌ خطأ في البيانات."); }
 });
 
 tgBot.action(/^stop_srv_(\d+)$/, (ctx) => {
@@ -169,4 +170,4 @@ tgBot.action(/^del_srv_(\d+)$/, (ctx) => {
 });
 
 tgBot.launch({ polling: { dropPendingUpdates: true } });
-console.log('🚀 نظام MaxBlack الأسطوري يعمل الآن مع مانع الطرد!');
+console.log('🚀 تم التحديث: قناتين فقط + مانع الطرد يعمل!');
