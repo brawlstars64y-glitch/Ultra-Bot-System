@@ -12,10 +12,11 @@ const bot = new Telegraf('8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU')
 bot.use(session({
   getSessionKey: (ctx) => ctx.from && ctx.chat && `${ctx.from.id}:${ctx.chat.id}`,
   defaultSession: () => ({
-    servers: [], // تخزين عدة سيرفرات
+    servers: [],
     currentServer: null,
     step: null,
-    action: null // نوع الإجراء (add, delete, edit)
+    action: null,
+    tempServer: null
   })
 }))
 
@@ -83,6 +84,7 @@ bot.action('add_server', ctx => {
   ctx.answerCbQuery().catch(() => {})
   ctx.session.step = 'server_name'
   ctx.session.action = 'add'
+  ctx.session.tempServer = {}
   ctx.reply('📝 أدخل اسم للسيرفر (مثال: سيرفر فري):')
 })
 
@@ -210,24 +212,29 @@ bot.action('back_to_main', ctx => {
   })
 })
 
-/* ✍️ معالجة الرسائل النصية */
+/* ✍️ معالجة الرسائل النصية - الإصلاح الرئيسي هنا */
 bot.on('text', ctx => {
-  if (!ctx.session.step) return
+  // ✅ الإصلاح: التحقق من وجود خطوة نشطة
+  if (!ctx.session || !ctx.session.step) {
+    // إذا لم يكن هناك خطوة نشطة، تجاهل الرسالة
+    return ctx.reply('👋 أهلاً بك! استخدم الأزرار أدناه للتفاعل.', {
+      reply_markup: mainMenu().reply_markup
+    })
+  }
 
   const text = ctx.message.text.trim()
+  console.log(`📝 خطوة: ${ctx.session.step}, نص: ${text}`) // تسجيل للتصحيح
 
   switch (ctx.session.step) {
     case 'server_name':
-      ctx.session.tempServer = { name: text }
+      ctx.session.tempServer.name = text
       ctx.session.step = 'server_ip'
-      ctx.reply('🌐 أدخل IP السيرفر (مثال: play.server.com):')
-      break
+      return ctx.reply('🌐 أدخل IP السيرفر (مثال: play.server.com):')
 
     case 'server_ip':
       ctx.session.tempServer.host = text
       ctx.session.step = 'server_port'
-      ctx.reply('🔢 أدخل Port السيرفر (مثال: 19132):')
-      break
+      return ctx.reply('🔢 أدخل Port السيرفر (مثال: 19132):')
 
     case 'server_port':
       const port = parseInt(text)
@@ -236,36 +243,83 @@ bot.on('text', ctx => {
       }
       ctx.session.tempServer.port = port
       ctx.session.step = 'bot_username'
-      ctx.reply('👤 أدخل اسم البوت في اللعبة:')
-      break
+      return ctx.reply('👤 أدخل اسم البوت في اللعبة:')
 
     case 'bot_username':
       ctx.session.tempServer.username = text
       ctx.session.step = 'server_version'
-      ctx.reply('🔄 أدخل إصدار السيرفر (مثال: 1.20.50 أو اترك فارغ للاكتشاف التلقائي):')
-      break
+      return ctx.reply('🔄 أدخل إصدار السيرفر (مثال: 1.20.50 أو اكتب "auto" للاكتشاف التلقائي):')
 
     case 'server_version':
-      if (text) {
-        ctx.session.tempServer.version = text
+      try {
+        console.log('✅ معالجة الإصدار:', text)
+        
+        // معالجة الإصدار
+        if (text.toLowerCase() === 'auto' || text.trim() === '') {
+          ctx.session.tempServer.version = false // الاكتشاف التلقائي
+        } else {
+          // التحقق من تنسيق الإصدار (مثال: 1.20.50)
+          const versionRegex = /^\d+\.\d+(\.\d+)?$/
+          if (!versionRegex.test(text)) {
+            return ctx.reply('⚠️ تنسيق الإصدار غير صالح. استخدم تنسيق مثل: 1.20.50 أو اكتب "auto":')
+          }
+          ctx.session.tempServer.version = text
+        }
+        
+        // ✅ إضافة السيرفر للقائمة
+        if (!ctx.session.servers) {
+          ctx.session.servers = []
+        }
+        
+        // إنشاء كائن السيرفر الكامل
+        const newServer = {
+          id: Date.now(),
+          name: ctx.session.tempServer.name || 'سيرفر بدون اسم',
+          host: ctx.session.tempServer.host || 'localhost',
+          port: ctx.session.tempServer.port || 19132,
+          username: ctx.session.tempServer.username || `Bot_${Date.now()}`,
+          version: ctx.session.tempServer.version || false,
+          created: new Date().toISOString()
+        }
+        
+        ctx.session.servers.push(newServer)
+        
+        // ✅ إعادة تعيين الجلسة
+        ctx.session.step = null
+        ctx.session.action = null
+        ctx.session.tempServer = null
+        
+        console.log('✅ تم إضافة سيرفر جديد:', newServer)
+        
+        ctx.reply(
+          `✅ **تم إضافة السيرفر بنجاح!**\n\n` +
+          `📌 **الاسم:** ${newServer.name}\n` +
+          `📍 **IP:** ${newServer.host}:${newServer.port}\n` +
+          `👤 **اسم البوت:** ${newServer.username}\n` +
+          `🔄 **الإصدار:** ${newServer.version ? newServer.version : 'اكتشاف تلقائي'}\n\n` +
+          `يمكنك الآن استخدام القائمة للدخول إلى السيرفر.`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: mainMenu().reply_markup
+          }
+        )
+        
+      } catch (error) {
+        console.error('❌ خطأ في إضافة السيرفر:', error)
+        ctx.session.step = null
+        ctx.session.tempServer = null
+        ctx.reply('❌ حدث خطأ أثناء إضافة السيرفر. حاول مرة أخرى.', {
+          reply_markup: mainMenu().reply_markup
+        })
       }
-      
-      // إضافة السيرفر للقائمة
-      if (!ctx.session.servers) {
-        ctx.session.servers = []
-      }
-      
-      const newServer = { ...ctx.session.tempServer, id: Date.now() }
-      ctx.session.servers.push(newServer)
+      break
+
+    default:
+      console.log('❌ خطوة غير معروفة:', ctx.session.step)
       ctx.session.step = null
-      ctx.session.action = null
-      ctx.session.tempServer = null
-      
-      ctx.reply(`✅ تم إضافة السيرفر بنجاح!\n\n📌 **${newServer.name}**\n📍 ${newServer.host}:${newServer.port}`, {
-        parse_mode: 'Markdown',
+      ctx.reply('⚠️ جلسة منتهية. ابدأ من جديد.', {
         reply_markup: mainMenu().reply_markup
       })
-      break
   }
 })
 
@@ -279,6 +333,8 @@ bot.action(/select_(\d+)/, async ctx => {
       parse_mode: 'Markdown',
       reply_markup: mainMenu().reply_markup
     })
+  } else {
+    await ctx.answerCbQuery('❌ السيرفر غير موجود')
   }
 })
 
@@ -317,6 +373,8 @@ bot.action('connect', async ctx => {
       options.version = false // اكتشاف تلقائي
     }
 
+    console.log('🚀 محاولة الاتصال بـ:', options)
+
     const client = bedrock.createClient(options)
 
     // حفظ العميل في الخريطة
@@ -329,6 +387,7 @@ bot.action('connect', async ctx => {
 
     // أحداث العميل
     client.on('spawn', () => {
+      console.log('✅ اتصال ناجح بـ:', server.name)
       ctx.reply(`🟢 البوت متصل الآن بـ ${server.name}`)
       
       // تشغيل AFK تلقائياً
@@ -359,23 +418,30 @@ bot.action('connect', async ctx => {
     })
 
     client.on('error', (err) => {
-      console.error('Connection Error:', err)
+      console.error('❌ Connection Error:', err)
       ctx.reply(`❌ خطأ في الاتصال بـ ${server.name}: ${err.message}`)
       cleanupConnection(serverKey)
     })
 
     client.on('disconnect', (packet) => {
+      console.log('🔴 تم فصل البوت من:', server.name)
       ctx.reply(`🔴 تم فصل البوت من ${server.name}`)
       cleanupConnection(serverKey)
     })
 
     client.on('server_disconnect', (packet) => {
+      console.log('⚠️ السيرفر قام بفصل البوت:', server.name)
       ctx.reply(`⚠️ السيرفر ${server.name} قام بفصل البوت`)
       cleanupConnection(serverKey)
     })
 
+    // إضافة حدث للتصحيح
+    client.on('connect', () => {
+      console.log('🔗 بدأ الاتصال بـ:', server.name)
+    })
+
   } catch (error) {
-    console.error('Connection Setup Error:', error)
+    console.error('❌ Connection Setup Error:', error)
     ctx.reply(`❌ فشل الاتصال بـ ${server.name}: ${error.message}`)
   }
 })
@@ -533,10 +599,12 @@ function cleanupConnection(serverKey) {
     afkIntervals.delete(serverKey)
   }
   clients.delete(serverKey)
+  console.log('🧹 تم تنظيف اتصال:', serverKey)
 }
 
 /* 🧹 تنظيف جميع الاتصالات عند إغلاق البوت */
 process.on('SIGINT', () => {
+  console.log('🛑 إغلاق البوت...')
   clients.forEach((connection, key) => {
     if (connection.client) {
       connection.client.close()
@@ -548,11 +616,11 @@ process.on('SIGINT', () => {
 
 /* 🛠️ معالجة الأخطاء */
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error)
+  console.error('⚠️ Uncaught Exception:', error)
 })
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
+  console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason)
 })
 
 /* 🚀 تشغيل البوت */
@@ -560,75 +628,32 @@ bot.launch({
   dropPendingUpdates: true,
   allowedUpdates: ['message', 'callback_query']
 }).then(() => {
-  console.log('✅ MaxBlack System is Online - All Versions Supported')
+  console.log('✅ MaxBlack System is Online')
   console.log('📞 Bot is running...')
+  console.log('⚠️ Debug logging is enabled')
 })
 
-// أوامر إضافية للمطور
-bot.command('clear', (ctx) => {
-  // إغلاق جميع الاتصالات
-  clients.forEach((connection, key) => {
-    if (connection.client) {
-      connection.client.close()
-    }
-    cleanupConnection(key)
-  })
-  
-  // مسح جميع البيانات
-  ctx.session.servers = []
-  ctx.session.currentServer = null
-  ctx.session.step = null
-  ctx.session.action = null
-  
-  ctx.reply('🧹 تم مسح جميع السيرفرات والبيانات.')
-})
-
-bot.command('servers', (ctx) => {
-  if (!ctx.session.servers || ctx.session.servers.length === 0) {
-    return ctx.reply('📭 لا توجد سيرفرات مضافة.')
+// أوامر إضافية للتصحيح
+bot.command('debug', (ctx) => {
+  const debugInfo = {
+    sessionSteps: ctx.session.step,
+    sessionAction: ctx.session.action,
+    serversCount: ctx.session.servers ? ctx.session.servers.length : 0,
+    tempServer: ctx.session.tempServer,
+    activeConnections: clients.size,
+    activeAFK: afkIntervals.size
   }
   
-  let serversList = '📋 **قائمة السيرفرات:**\n\n'
-  ctx.session.servers.forEach((server, index) => {
-    const isCurrent = ctx.session.currentServer && 
-                     server.host === ctx.session.currentServer.host &&
-                     server.port === ctx.session.currentServer.port
-    serversList += `${isCurrent ? '✅' : '📌'} **${index + 1}. ${server.name}**\n`
-    serversList += `   🌐 ${server.host}:${server.port}\n`
-    serversList += `   👤 ${server.username}\n`
-    if (server.version) serversList += `   🔄 ${server.version}\n`
-    serversList += `   ---\n`
-  })
-  
-  serversList += `\n**الإجمالي:** ${ctx.session.servers.length} سيرفر`
-  
-  ctx.reply(serversList, {
-    parse_mode: 'Markdown',
-    reply_markup: mainMenu().reply_markup
+  ctx.reply(`🔧 **معلومات التصحيح:**\n\`\`\`json\n${JSON.stringify(debugInfo, null, 2)}\n\`\`\``, {
+    parse_mode: 'Markdown'
   })
 })
 
-bot.command('help', (ctx) => {
-  const helpMessage = `🎮 **أوامر البوت:**\n\n` +
-    `🏠 **القائمة الرئيسية:**\n` +
-    `➕ إضافة سيرفر جديد\n` +
-    `📋 عرض قائمة السيرفرات\n` +
-    `🗑️ حذف سيرفر من القائمة\n` +
-    `▶️ الدخول للسيرفر المحدد\n` +
-    `⏹️ الخروج من السيرفر\n` +
-    `⚙️ إعدادات AFK\n` +
-    `📊 حالة البوت والسيرفرات\n\n` +
-    `📝 **أوامر نصية:**\n` +
-    `/servers - عرض جميع السيرفرات\n` +
-    `/clear - مسح جميع البيانات\n` +
-    `/help - عرض هذه المساعدة\n\n` +
-    `⚠️ **ملاحظة:**\n` +
-    `- تأكد من صحة بيانات السيرفر\n` +
-    `- استخدم AFK في أماكن آمنة\n` +
-    `- احفظ بياناتك المهمة`
-  
-  ctx.reply(helpMessage, {
-    parse_mode: 'Markdown',
+bot.command('reset', (ctx) => {
+  ctx.session.step = null
+  ctx.session.action = null
+  ctx.session.tempServer = null
+  ctx.reply('🔄 تم إعادة تعيين الجلسة.', {
     reply_markup: mainMenu().reply_markup
   })
 })
