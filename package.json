@@ -1,18 +1,13 @@
 {
-  "name": "minecraft-24-7-bot",
+  "name": "pedrock-server-manager",
   "version": "1.0.0",
-  "description": "بوت لإبقاء سيرفر ماينكرافت مفتوح 24/7",
+  "description": "نظام إدارة سيرفرات بيدروك مع واجهة إضافة",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "telegraf": "^4.16.3",
-    "mineflayer": "^4.15.0",
-    "node-cron": "^3.0.3"
-  },
-  "keywords": ["minecraft", "bot", "telegram", "24/7"],
-  "author": "",
-  "license": "MIT"
+    "mineflayer": "^4.15.0"
+  }
 }
