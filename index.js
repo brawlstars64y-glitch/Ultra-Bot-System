@@ -121,4 +121,36 @@ bot.action('connect', ctx => {
 
 /* ⏹️ خروج */
 bot.action('disconnect', ctx => {
-  ctx.answe
+  ctx.answerCbQuery()
+  if (!client)
+    return ctx.reply('⚠️ غير متصل', { reply_markup: menu().reply_markup })
+
+  client.close()
+  cleanup()
+  ctx.reply(
+    '🛑 تم إخراج البوت',
+    { reply_markup: menu().reply_markup }
+  )
+})
+
+/* 📊 الحالة */
+bot.action('status', ctx => {
+  ctx.answerCbQuery()
+  ctx.reply(
+    client ? '🟢 البوت متصل' : '🔴 البوت غير متصل',
+    { reply_markup: menu().reply_markup }
+  )
+})
+
+function cleanup () {
+  if (afk) clearInterval(afk)
+  afk = null
+  client = null
+}
+
+/* Anti-Crash */
+process.on('uncaughtException', e => console.log(e))
+process.on('unhandledRejection', e => console.log(e))
+
+bot.launch()
+console.log('✅ Bot Running')
