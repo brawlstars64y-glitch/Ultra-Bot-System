@@ -1,115 +1,104 @@
-const TelegramBot = require('node-telegram-bot-api');
-const { exec } = require('child_process');
+const { Telegraf, Markup } = require('telegraf');
+const bedrock = require('bedrock-protocol');
+const http = require('http');
 
-const token = '8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ'; // التوكن الخاص بك
-const bot = new TelegramBot(token, { polling: true });
+const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ');
 
-// قاعدة بيانات بسيطة لتخزين السيرفرات
-let servers = [];
+let servers = []; // قائمة السيرفرات
 
-// وظيفة التحقق من الحالة
-function checkServerStatus(ip) {
+// بدء البوت
+bot.start((ctx) => {
+  ctx.reply('مرحبًا بك في إدارة سيرفرات Bedrock! استخدم /menu لعرض الخيارات.');
+});
+
+// عرض القائمة
+bot.command('menu', (ctx) => {
+  ctx.reply('اختر خيار:', Markup.inlineKeyboard([
+    [Markup.button.callback('إضافة سيرفر', 'add_server')],
+    [Markup.button.callback('عرض السيرفرات', 'list_servers')]
+  ]));
+});
+
+// إضافة سيرفر
+bot.action('add_server', (ctx) => {
+  ctx.reply('يرجى إرسال عنوان الـ IP الخاص بالسيرفر:');
+  bot.once('text', (msg) => {
+    const ip = msg.message.text.trim();
+    servers.push({ ip });
+    ctx.reply(`تمت إضافة السيرفر بعنوان: ${ip}`);
+  });
+});
+
+// عرض السيرفرات
+bot.action('list_servers', (ctx) => {
+  if (servers.length === 0) {
+    ctx.reply('لا توجد سيرفرات مضافة حالياً.');
+    return;
+  }
+  servers.forEach((server, index) => {
+    ctx.reply(`السيرفر ${index + 1}: ${server.ip}`, Markup.inlineKeyboard([
+      [Markup.button.callback('التحقق من الحالة', `check_${index}`)],
+      [Markup.button.callback('إعادة التشغيل', `restart_${index}`)]
+    ]));
+  });
+});
+
+// التحقق من حالة السيرفر باستخدام bedrock-protocol
+bot.action(/check_(\d+)/, async (ctx) => {
+  const index = parseInt(ctx.match[1]);
+  const server = servers[index];
+  ctx.reply(`جارٍ التحقق من حالة السيرفر ${server.ip}...`);
+  const isOnline = await checkBedrockServer(server.ip);
+  ctx.reply(`السيرفر ${server.ip} حالته: ${isOnline ? 'شغال' : 'متوقف'}`);
+});
+
+// إعادة تشغيل السيرفر (مثال)
+bot.action(/restart_(\d+)/, (ctx) => {
+  const index = parseInt(ctx.match[1]);
+  const server = servers[index];
+  ctx.reply(`جارٍ إعادة تشغيل السيرفر ${server.ip}...`);
+  restartServer(server.ip).then(() => {
+    ctx.reply('تمت إعادة تشغيل السيرفر بنجاح.');
+  }).catch(() => {
+    ctx.reply('حدث خطأ أثناء إعادة التشغيل.');
+  });
+});
+
+// وظيفة التحقق من حالة سيرفر Bedrock
+async function checkBedrockServer(ip) {
   return new Promise((resolve) => {
-    exec(`ping -c 1 ${ip}`, (error, stdout, stderr) => {
-      if (error) {
-        resolve(false);
-      } else {
-        resolve(true);
-      }
+    const client = bedrock.createClient({
+      host: ip,
+      port: 19132,
+      // اضف باقي الإعدادات إذا لزم الأمر
+    });
+
+    // محاولة الاتصال
+    client.on('connect', () => {
+      resolve(true);
+      client.end(); // اغلاق الاتصال بعد التحقق
+    });
+
+    client.on('error', (err) => {
+      resolve(false);
     });
   });
 }
 
-// وظيفة إعادة تشغيل السيرفر
-function restartServer() {
+// وظيفة إعادة التشغيل (نموذج، يعتمد على طريقة السيرفر)
+function restartServer(ip) {
   return new Promise((resolve, reject) => {
-    exec('systemctl restart minecraft', (error, stdout, stderr) => {
-      if (error) {
-        reject(error);
-      } else {
-        resolve(stdout);
-      }
-    });
+    // هنا تضع أمر إعادة التشغيل الخاص بك، مثلاً عبر SSH أو أمر نظام
+    // مثال:
+    // exec(`ssh user@${ip} 'sudo systemctl restart bedrock'`, (err) => {
+    //   if (err) reject(err);
+    //   else resolve();
+    // });
+    resolve(); // مؤقتًا، استبدله بأمر حقيقي
   });
 }
 
-// بداية التفاعل مع المستخدم
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, 'مرحبًا بك في إدارة السيرفرات!', {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: 'إضافة سيرفر', callback_data: 'add_server' },
-          { text: 'سيرفراتي', callback_data: 'my_servers' }
-        ]
-      ]
-    }
-  });
-});
+// تشغيل البوت
+bot.launch();
 
-// التعامل مع ضغط الأزرار
-bot.on('callback_query', async (callbackQuery) => {
-  const data = callbackQuery.data;
-  const chatId = callbackQuery.message.chat.id;
-
-  if (data === 'add_server') {
-    bot.sendMessage(chatId, 'يرجى إرسال عنوان الـ IP الخاص بالسيرفر لإضافته.');
-    // انتظار رسالة المستخدم
-    bot.once('message', (msg) => {
-      const ip = msg.text.trim();
-      servers.push({ ip: ip });
-      bot.sendMessage(chatId, `تمت إضافة السيرفر بعنوان: ${ip}`);
-    });
-  } else if (data === 'my_servers') {
-    if (servers.length === 0) {
-      bot.sendMessage(chatId, 'لا توجد سيرفرات حالياً.');
-    } else {
-      let msgText = 'قائمة السيرفرات:\n';
-      servers.forEach((server, index) => {
-        msgText += `${index + 1}. ${server.ip}\n`;
-      });
-      bot.sendMessage(chatId, msgText);
-    }
-  } else if (data.startsWith('check_server_')) {
-    const index = parseInt(data.split('_')[2]);
-    if (servers[index]) {
-      const status = await checkServerStatus(servers[index].ip);
-      bot.sendMessage(chatId, `السيرفر ${servers[index].ip} حالته: ${status ? 'شغال' : 'متوقف'}`);
-    }
-  } else if (data.startsWith('restart_server_')) {
-    const index = parseInt(data.split('_')[2]);
-    if (servers[index]) {
-      try {
-        await restartServer();
-        bot.sendMessage(chatId, 'تم إعادة تشغيل السيرفر بنجاح.');
-      } catch (err) {
-        bot.sendMessage(chatId, 'حدث خطأ أثناء إعادة التشغيل.');
-      }
-    }
-  }
-
-  bot.answerCallbackQuery(callbackQuery.id);
-});
-
-// لعرض قائمة السيرفرات مع أزرار لكل سيرفر
-bot.on('message', (msg) => {
-  if (msg.text && msg.text === '/servers') {
-    if (servers.length === 0) {
-      bot.sendMessage(msg.chat.id, 'لا توجد سيرفرات لإظهارها.');
-    } else {
-      servers.forEach((server, index) => {
-        bot.sendMessage(msg.chat.id, `السيرفر ${server.ip}`, {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: 'التحقق من الحالة', callback_data: `check_server_${index}` },
-                { text: 'إعادة التشغيل', callback_data: `restart_server_${index}` }
-              ]
-            ]
-          }
-        });
-      });
-    }
-  }
-});
+console.log('Bot is running...');
