@@ -2,12 +2,10 @@ const { Telegraf, Markup, session } = require('telegraf')
 const bedrock = require('bedrock-protocol')
 const http = require('http')
 
-/* 🔄 Keep Alive لـ Railway */
-http.createServer((req, res) => {
-  res.end('OK')
-}).listen(process.env.PORT || 3000)
+/* Railway Keep Alive */
+http.createServer((req, res) => res.end('OK')).listen(process.env.PORT || 3000)
 
-/* 🔑 توكن */
+/* Telegram Bot */
 const bot = new Telegraf('8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU')
 bot.use(session())
 
@@ -15,17 +13,22 @@ let client = null
 let server = null
 let afk = null
 
-/* 🎮 القائمة */
-const menu = Markup.inlineKeyboard([
-  [Markup.button.callback('➕ إضافة سيرفر', 'add')],
-  [Markup.button.callback('▶️ دخول', 'connect')],
-  [Markup.button.callback('⏹️ خروج', 'disconnect')],
-  [Markup.button.callback('📊 الحالة', 'status')]
-])
+/* 🎮 الواجهة */
+function menu () {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('➕ إضافة سيرفر', 'add')],
+    [Markup.button.callback('▶️ دخول', 'connect')],
+    [Markup.button.callback('⏹️ خروج', 'disconnect')],
+    [Markup.button.callback('📊 الحالة', 'status')]
+  ])
+}
 
 /* 🚀 start */
 bot.start(ctx => {
-  ctx.reply('🤖 بوت بلاير جاهز\nاختر خيار:', menu)
+  ctx.reply(
+    '🔴 البوت غير متصل',
+    { reply_markup: menu().reply_markup }
+  )
 })
 
 /* ➕ إضافة سيرفر */
@@ -57,7 +60,10 @@ bot.on('text', ctx => {
       username: ctx.message.text
     }
     ctx.session = null
-    ctx.reply('✅ تم حفظ السيرفر', menu)
+    ctx.reply(
+      '✅ تم حفظ السيرفر',
+      { reply_markup: menu().reply_markup }
+    )
   }
 })
 
@@ -65,8 +71,11 @@ bot.on('text', ctx => {
 bot.action('connect', ctx => {
   ctx.answerCbQuery()
 
-  if (!server) return ctx.reply('⚠️ أضف سيرفر أولاً', menu)
-  if (client) return ctx.reply('⚠️ البوت متصل', menu)
+  if (!server)
+    return ctx.reply('⚠️ أضف سيرفر أولاً', { reply_markup: menu().reply_markup })
+
+  if (client)
+    return ctx.reply('⚠️ البوت متصل', { reply_markup: menu().reply_markup })
 
   ctx.reply('⏳ جاري الدخول...')
 
@@ -78,7 +87,10 @@ bot.action('connect', ctx => {
   })
 
   client.on('spawn', () => {
-    ctx.reply('✅ دخل السيرفر')
+    ctx.reply(
+      '🟢 البوت متصل',
+      { reply_markup: menu().reply_markup }
+    )
 
     afk = setInterval(() => {
       if (!client) return
@@ -92,42 +104,21 @@ bot.action('connect', ctx => {
 
   client.on('disconnect', () => {
     cleanup()
-    ctx.reply('❌ تم فصل البوت', menu)
+    ctx.reply(
+      '🔴 تم فصل البوت',
+      { reply_markup: menu().reply_markup }
+    )
   })
 
   client.on('error', err => {
     cleanup()
-    ctx.reply('⚠️ خطأ: ' + err.message, menu)
+    ctx.reply(
+      '⚠️ خطأ: ' + err.message,
+      { reply_markup: menu().reply_markup }
+    )
   })
 })
 
 /* ⏹️ خروج */
 bot.action('disconnect', ctx => {
-  ctx.answerCbQuery()
-  if (!client) return ctx.reply('⚠️ غير متصل', menu)
-  client.close()
-  cleanup()
-  ctx.reply('🛑 تم الإخراج', menu)
-})
-
-/* 📊 الحالة */
-bot.action('status', ctx => {
-  ctx.answerCbQuery()
-  ctx.reply(
-    client ? '🟢 البوت متصل' : '🔴 البوت غير متصل',
-    menu
-  )
-})
-
-function cleanup () {
-  if (afk) clearInterval(afk)
-  afk = null
-  client = null
-}
-
-/* 🛡️ منع الكراش */
-process.on('uncaughtException', e => console.log(e))
-process.on('unhandledRejection', e => console.log(e))
-
-bot.launch()
-console.log('🤖 Bot Started')
+  ctx.answe
