@@ -18,7 +18,7 @@ bot.use(session());
 let activeClients = {};
 let afkIntervals = {};
 
-// 🎨 الواجهة الرئيسية المعدلة
+// 🎨 الواجهة الرئيسية
 const mainUI = Markup.inlineKeyboard([
     [Markup.button.callback('🎮 سـيـرفـراتـي المـحـفـوظـة', 'list_srv')],
     [Markup.button.callback('➕ إضـافـة سـيـرفـر جـديـد', 'add_srv')],
@@ -27,27 +27,10 @@ const mainUI = Markup.inlineKeyboard([
 ]);
 
 bot.start((ctx) => {
-    // الواجهة الجديدة كما طلبت يا بطل
     ctx.replyWithMarkdown(`*مرحباً بك، أنا هنا لحماية سيرفرك من قطع الاتصال* 🛡️`, mainUI);
 });
 
-// ⚙️ إعدادات النظام
-bot.action('settings', (ctx) => {
-    ctx.editMessageText(`⚙️ *إعدادات الحماية:*\n\n• حماية الاتصال: مفعلة ✅\n• نظام Anti-AFK: مفعل ✅\n• إصدار البروتوكول: 1.21.130`, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'home')]])
-    });
-});
-
-// ❓ المساعدة
-bot.action('help', (ctx) => {
-    ctx.editMessageText(`❓ *كيفية الاستخدام:*\n\n1. أضف سيرفرك (IP ثم Port).\n2. ادخل لقائمة سيرفراتي.\n3. اضغط "تشغيل" وسأقوم بالباقي لحماية السيرفر.`, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([[Markup.button.callback('🔙 رجوع', 'home')]])
-    });
-});
-
-// 🛠️ إضافة سيرفر
+// 🛠️ إضافة سيرفر (IP ثم Port)
 bot.action('add_srv', (ctx) => {
     ctx.session = { step: 'get_host' };
     ctx.reply('📥 *أرسل الآن عنوان السيرفر (IP) فقط:*');
@@ -58,14 +41,14 @@ bot.on('text', async (ctx) => {
     if (ctx.session?.step === 'get_host') {
         ctx.session.tempHost = ctx.message.text.trim().replace(/https?:\/\//, '').split('/')[0];
         ctx.session.step = 'get_port';
-        ctx.reply('🔢 *أرسل الآن البورت (Port):*');
+        ctx.reply('🔢 *جميل! الآن أرسل البورت (Port):*');
     } 
     else if (ctx.session?.step === 'get_port') {
         let servers = db.get(`${userId}.servers`) || [];
         servers.push({ host: ctx.session.tempHost, port: ctx.message.text.trim(), bot_name: "MaxBlack_Pro" });
         db.set(`${userId}.servers`, servers);
         ctx.session = null;
-        ctx.reply('✅ *تم حفظ السيرفر!*', mainUI);
+        ctx.reply('✅ *تم حفظ البيانات!*', mainUI);
     }
 });
 
@@ -74,7 +57,7 @@ bot.action('list_srv', (ctx) => {
     if (servers.length === 0) return ctx.answerCbQuery("❌ لا توجد سيرفرات!", { show_alert: true });
     const kb = servers.map((s, i) => [Markup.button.callback(`🌐 ${s.host}`, `manage_${i}`)]);
     kb.push([Markup.button.callback('🔙 رجوع', 'home')]);
-    ctx.editMessageText('🎮 *اختر السيرفر:*', Markup.inlineKeyboard(kb));
+    ctx.editMessageText('🎮 *سيرفراتك المضافة:*', Markup.inlineKeyboard(kb));
 });
 
 bot.action(/^manage_(\d+)$/, (ctx) => {
@@ -90,7 +73,7 @@ bot.action(/^manage_(\d+)$/, (ctx) => {
     });
 });
 
-// ▶️ المحرك
+// ▶️ المحرك المطور لمنع الخروج (Anti-Kick Engine)
 bot.action(/^toggle_(\d+)$/, async (ctx) => {
     const idx = ctx.match[1];
     const userId = ctx.from.id;
@@ -104,26 +87,49 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
     }
 
     try {
-        ctx.answerCbQuery("⏳ جاري الاتصال والحماية...");
+        ctx.answerCbQuery("⏳ جاري الاتصال وتثبيت الحماية...");
+        
         activeClients[userId] = bedrock.createClient({
-            host: s.host, port: parseInt(s.port), username: s.bot_name,
-            offline: true, version: '1.21.130', skipPing: true,
+            host: s.host,
+            port: parseInt(s.port),
+            username: s.bot_name,
+            offline: true,
+            version: '1.21.130',
+            skipPing: true,
+            connectTimeout: 30000,
             profiles: { platform: 1, deviceModel: 'Samsung S24 Ultra' }
         });
 
         activeClients[userId].on('spawn', () => {
-            ctx.reply(`✅ *تم تثبيت الاتصال بنجاح! البوت الآن يحمي سيرفرك.*`);
+            ctx.reply(`✅ *تم تثبيت الاتصال! البوت الآن يتحرك بشكل دوري لمنع الطرد.*`);
+            
+            // 🔄 نظام النبض الحركي (Anti-AFK Pro)
             afkIntervals[userId] = setInterval(() => {
                 if (activeClients[userId]) {
-                    activeClients[userId].queue('text', { type: 'chat', needs_translation: false, source_name: s.bot_name, xuid: '', platform_chat_id: '', message: '🛡️ Connection Protected' });
+                    // 1. إرسال رسالة دردشة صامتة
+                    activeClients[userId].queue('text', { 
+                        type: 'chat', needs_translation: false, source_name: s.bot_name, 
+                        xuid: '', platform_chat_id: '', message: '🛡️ Connection Active' 
+                    });
+
+                    // 2. محاكاة حركة قفز (لإيهام السيرفر بالنشاط)
+                    activeClients[userId].queue('player_auth_input', {
+                        pitch: 0, yaw: 0, 
+                        position: { x: 0, y: 0, z: 0 }, 
+                        move_vector: { x: 0, z: 0 },
+                        head_yaw: 0, input_data: { jump_down: true }, 
+                        input_mode: 'touch', play_mode: 'normal'
+                    });
                 }
-            }, 35000);
+            }, 30000); // كل 30 ثانية حركة ورسالة
         });
 
         activeClients[userId].on('error', (err) => {
+            console.log(`[Disc] ${userId}: ${err.message}`);
             delete activeClients[userId];
             clearInterval(afkIntervals[userId]);
         });
+
     } catch (e) { ctx.reply("❌ حدث خطأ في الاتصال."); }
 });
 
@@ -137,4 +143,4 @@ bot.action(/^del_(\d+)$/, (ctx) => {
 });
 
 bot.launch();
-console.log('🚀 البوت شغال بالواجهة الجديدة!');
+console.log('🚀 نظام الحماية المستقر يعمل الآن!');
