@@ -1,87 +1,49 @@
-const { Telegraf } = require('telegraf')
+const { Telegraf, Markup, session } = require('telegraf')
 const bedrock = require('bedrock-protocol')
 
-// 🔑 توكن البوت
 const BOT_TOKEN = '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU'
-
 const bot = new Telegraf(BOT_TOKEN)
+
+bot.use(session())
 
 let mcClient = null
 let afkInterval = null
+let serverData = null
 
-bot.start(ctx => {
-  ctx.reply(
-    '🤖 *بوت بلاير Bedrock*\n\n' +
-    'الأوامر:\n' +
-    '/connect IP PORT NAME\n' +
-    '/disconnect',
-    { parse_mode: 'Markdown' }
-  )
-})
-
-bot.command('connect', ctx => {
-  if (mcClient) {
-    return ctx.reply('⚠️ البوت داخل السيرفر بالفعل')
-  }
-
-  const args = ctx.message.text.split(' ')
-  if (args.length < 4) {
-    return ctx.reply('❌ الاستخدام:\n/connect IP PORT NAME')
-  }
-
-  const host = args[1]
-  const port = parseInt(args[2])
-  const username = args.slice(3).join(' ')
-
-  ctx.reply('⏳ جاري الدخول للسيرفر...')
-
-  mcClient = bedrock.createClient({
-    host,
-    port,
-    username,
-    offline: true
-  })
-
-  mcClient.on('spawn', () => {
-    ctx.reply('✅ البوت دخل السيرفر بنجاح')
-
-    // Anti-AFK بسيط (ما يسبب طرد)
-    afkInterval = setInterval(() => {
-      if (!mcClient) return
-      mcClient.queue('command_request', {
-        command: 'tp @s ~ ~ ~',
-        origin: { type: 0 },
-        internal: false
-      })
-    }, 30000)
-  })
-
-  mcClient.on('disconnect', reason => {
-    ctx.reply('❌ تم فصل البوت من السيرفر')
-    cleanup()
-  })
-
-  mcClient.on('error', err => {
-    ctx.reply('⚠️ خطأ: ' + err.message)
-    cleanup()
-  })
-})
-
-bot.command('disconnect', ctx => {
-  if (!mcClient) {
-    return ctx.reply('⚠️ لا يوجد بوت متصل')
-  }
-
-  mcClient.close()
-  cleanup()
-  ctx.reply('🛑 تم إخراج البوت')
-})
-
-function cleanup () {
-  if (afkInterval) clearInterval(afkInterval)
-  afkInterval = null
-  mcClient = null
+// 🎛️ الواجهة الرئيسية
+function mainMenu () {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('➕ إضافة سيرفر', 'add')],
+    [Markup.button.callback('▶️ دخول السيرفر', 'connect')],
+    [Markup.button.callback('⏹️ خروج', 'disconnect')],
+    [Markup.button.callback('📊 الحالة', 'status')]
+  ])
 }
 
-bot.launch()
-console.log('🤖 Telegram Bot Online')
+bot.start(ctx => {
+  ctx.reply('🤖 *لوحة تحكم بوت بلاير*\nاختر خيار:', {
+    parse_mode: 'Markdown',
+    ...mainMenu()
+  })
+})
+
+// ➕ إضافة سيرفر
+bot.action('add', ctx => {
+  ctx.answerCbQuery()
+  ctx.session.step = 'ip'
+  ctx.reply('🌐 أرسل IP السيرفر:')
+})
+
+bot.on('text', ctx => {
+  if (!ctx.session.step) return
+
+  if (ctx.session.step === 'ip') {
+    ctx.session.ip = ctx.message.text
+    ctx.session.step = 'port'
+    return ctx.reply('🔢 أرسل Port السيرفر:')
+  }
+
+  if (ctx.session.step === 'port') {
+    ctx.session.port = parseInt(ctx.message.text)
+    ctx.session.step = 'name'
+    return ctx.reply
