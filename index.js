@@ -3,50 +3,39 @@ const bedrock = require('bedrock-protocol');
 const editJsonFile = require("edit-json-file");
 const http = require('http');
 
-// 🌐 سيرفر Railway لإبقاء البوت حياً 24 ساعة
+// 🌐 سيرفر Railway لضمان العمل 24 ساعة
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.write("💎 نظام MaxBlack يعمل بأعلى كفاءة");
     res.end();
 }).listen(process.env.PORT || 3000);
 
-// 🛡️ الحماية: جلب التوكن من المتغيرات البيئية
+// 🛡️ إعدادات البوت وقاعدة البيانات
 const token = process.env.BOT_TOKEN || '8574351688:AAGoLUdUDDa3xxlDPVmma5wezaYQXZNBFuU';
 const db = editJsonFile(`${__dirname}/database.json`, { autosave: true });
 const tgBot = new Telegraf(token);
 
-// 📢 إعداد القنوات وحساب المطور
 const CHANNELS = [
     { id: '@minecrafmodss12', link: 'https://t.me/minecrafmodss12' },
     { id: '@aternosbot24', link: 'https://t.me/aternosbot24' }
 ];
-const DEVELOPER_LINK = 'https://t.me/uuuaaw'; // حسابك يا بطل
+const DEVELOPER_LINK = 'https://t.me/uuuaaw';
 
 let activeClients = {};
 
-// 🔍 دالة فحص الاشتراك
+// 🔍 فحص الاشتراك الإجباري
 async function checkAllSubscriptions(ctx) {
     for (const channel of CHANNELS) {
         try {
             const member = await ctx.telegram.getChatMember(channel.id, ctx.from.id);
             const status = ['member', 'administrator', 'creator'];
             if (!status.includes(member.status)) return false;
-        } catch (e) {
-            console.log(`خطأ فحص القناة ${channel.id}: تأكد من رتبة البوت.`);
-            return false;
-        }
+        } catch (e) { return false; }
     }
     return true;
 }
 
-// ⌨️ أزرار الاشتراك
-const subButtons = Markup.inlineKeyboard([
-    [Markup.button.url('📢 القناة الأولى (Minecraft)', CHANNELS[0].link)],
-    [Markup.button.url('📢 القناة الثانية (Updates)', CHANNELS[1].link)],
-    [Markup.button.callback('✅ تم الاشتراك في القناتين', 'main_menu')]
-]);
-
-// 🎮 أزرار القائمة الرئيسية (تم إضافة زر المطور)
+// ⌨️ القوائم الرئيسية
 const mainButtons = (ctx) => Markup.inlineKeyboard([
     [Markup.button.callback('🎮 سـيـرفـراتـي المـحـفـوظـة', 'my_servers')],
     [Markup.button.callback('➕ إضـافـة سـيـرفـر جـديـد', 'add_server')],
@@ -54,96 +43,107 @@ const mainButtons = (ctx) => Markup.inlineKeyboard([
     [Markup.button.url('👨‍💻 المـطـور (الدعم الفني)', DEVELOPER_LINK)]
 ]);
 
-// 🚀 الأوامر الأساسية
+// 🚀 أوامر البداية
 tgBot.start(async (ctx) => {
-    const isSubbed = await checkAllSubscriptions(ctx);
-    if (isSubbed) {
-        ctx.replyWithMarkdown(`👋 *أهلاً بك يا بطل في نظام MaxBlack*\n🚀 *سيرفراتك محمية بخصوصية تامة*`, mainButtons(ctx));
+    if (await checkAllSubscriptions(ctx)) {
+        ctx.replyWithMarkdown(`👋 *أهلاً بك يا بطل في نظام MaxBlack*`, mainButtons(ctx));
     } else {
-        ctx.reply('⚠️ *عذراً عزيزي، يجب عليك الاشتراك في القناتين أدناه لتتمكن من استخدام البوت:*', subButtons);
+        ctx.reply('⚠️ *يجب الاشتراك في القنوات لتفعيل البوت:*', Markup.inlineKeyboard([
+            [Markup.button.url('📢 القناة الأولى', CHANNELS[0].link)],
+            [Markup.button.url('📢 القناة الثانية', CHANNELS[1].link)],
+            [Markup.button.callback('✅ تم الاشتراك', 'main_menu')]
+        ]));
     }
 });
 
 tgBot.action('main_menu', async (ctx) => {
     if (await checkAllSubscriptions(ctx)) {
-        ctx.editMessageText('🔮 *قـائـمـة الـتـحـكـم الـرئـيـسـيـة:*', { parse_mode: 'Markdown', ...mainButtons(ctx) });
+        ctx.editMessageText('🔮 *قائمة التحكم الرئيسية:*', { parse_mode: 'Markdown', ...mainButtons(ctx) });
     } else {
-        ctx.answerCbQuery('❌ لم تشترك في كلتا القناتين بعد!', { show_alert: true });
+        ctx.answerCbQuery('❌ اشترك أولاً!', { show_alert: true });
     }
 });
 
+// 📁 نظام السيرفرات المتعددة (الحد الأقصى 3)
 tgBot.action('my_servers', async (ctx) => {
-    if (!(await checkAllSubscriptions(ctx))) return;
     const userId = ctx.from.id;
-    const h = db.get(`${userId}.host`);
-    const p = db.get(`${userId}.port`);
-    const name = db.get(`${userId}.bot_name`) || "MaxBlack";
-    
-    if (!h) return ctx.answerCbQuery("❌ أضف سيرفراً أولاً!", { show_alert: true });
+    const servers = db.get(`${userId}.servers`) || [];
+    if (servers.length === 0) return ctx.answerCbQuery("❌ لا توجد سيرفرات!", { show_alert: true });
 
-    const panel = `
-📊 *تـفـاصـيـل سـيـرفـرك الـخـاص:*
-━━━━━━━━━━━━━━
-🌐 *الـعـنـوان:* \`${h}\`
-🔌 *الـبـورت:* \`${p}\`
-🤖 *اسـم البـوت:* \`${name}\`
-🎮 *الإصـدار:* \`1.21.130\`
-━━━━━━━━━━━━━━`;
+    let keyboard = servers.map((s, i) => [Markup.button.callback(`${i + 1}. 🌐 ${s.host}:${s.port}`, `manage_srv_${i}`)]);
+    keyboard.push([Markup.button.callback('🔙 رجوع', 'main_menu')]);
+    ctx.editMessageText('🎮 *قائمة سيرفراتك (الأقصى 3):*', { parse_mode: 'Markdown', ...Markup.inlineKeyboard(keyboard) });
+});
 
-    ctx.editMessageText(panel, {
+tgBot.action('add_server', (ctx) => {
+    const servers = db.get(`${ctx.from.id}.servers`) || [];
+    if (servers.length >= 3) return ctx.answerCbQuery("⚠️ وصلت للحد الأقصى (3)!", { show_alert: true });
+    ctx.reply('📥 *أرسل البيانات بصيغة (IP:PORT):*\n⚠️ *مثال:* `play.example.com:19132`');
+    db.set(`${ctx.from.id}.state`, 'waiting_srv');
+});
+
+// 📝 معالجة النصوص وحماية المدخلات
+tgBot.on('text', async (ctx) => {
+    const userId = ctx.from.id;
+    const msg = ctx.message.text;
+    if (db.get(`${userId}.state`) === 'waiting_srv') {
+        if (msg.includes('://') || msg.includes('https')) {
+            return ctx.reply("❌ *خطأ:* أرسل العنوان بدون https أو روابط!");
+        }
+        if (msg.includes(':')) {
+            const [h, p] = msg.split(':');
+            let servers = db.get(`${userId}.servers`) || [];
+            servers.push({ host: h.trim(), port: p.trim(), bot_name: "MaxBlack" });
+            db.set(`${userId}.servers`, servers);
+            db.set(`${userId}.state`, null);
+            ctx.reply(`✅ *تم حفظ السيرفر رقم ${servers.length}*`);
+        }
+    }
+});
+
+// ⚙️ إدارة السيرفرات والتشغيل بحماية Try-Catch
+tgBot.action(/^manage_srv_(\d+)$/, (ctx) => {
+    const index = ctx.match[1];
+    const s = db.get(`${ctx.from.id}.servers`)[index];
+    ctx.editMessageText(`📊 *تحكم بالسيرفر (${parseInt(index)+1}):*\n🌐 \`${s.host}:${s.port}\`\n🤖 \`${s.bot_name}\``, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-            [Markup.button.callback('▶️ تـشـغـيـل', 'start_bot'), Markup.button.callback('🛑 إيـقـاف', 'stop_bot')],
-            [Markup.button.callback('🗑️ حـذف', 'delete_server'), Markup.button.callback('🔙 رجـوع', 'main_menu')]
+            [Markup.button.callback('▶️ تشغيل', `start_srv_${index}`), Markup.button.callback('🛑 إيقاف', `stop_srv_${index}`)],
+            [Markup.button.callback('🗑️ حذف', `del_srv_${index}`), Markup.button.callback('🔙', 'my_servers')]
         ])
     });
 });
 
-tgBot.on('text', async (ctx) => {
-    if (!(await checkAllSubscriptions(ctx))) return;
+tgBot.action(/^start_srv_(\d+)$/, async (ctx) => {
+    const index = ctx.match[1];
     const userId = ctx.from.id;
-    const msg = ctx.message.text;
+    const s = db.get(`${userId}.servers`)[index];
+    ctx.reply(`⏳ *جاري محاولة الاتصال بـ ${s.host}...*`);
 
-    if (msg.includes(':')) {
-        const [h, p] = msg.split(':');
-        db.set(`${userId}.host`, h); db.set(`${userId}.port`, p);
-        ctx.reply('✅ *تم حفظ بياناتك الخاصة بنجاح!*');
-    } else if (!msg.startsWith('/')) {
-        db.set(`${userId}.bot_name`, msg);
-        ctx.reply(`✅ *تم تغيير اسم بوتك الخاص إلى:* ${msg}`);
-    }
+    try {
+        if (activeClients[userId]) activeClients[userId].close();
+        activeClients[userId] = bedrock.createClient({
+            host: s.host, port: parseInt(s.port), username: s.bot_name, offline: true, version: '1.21.130'
+        });
+        activeClients[userId].on('spawn', () => ctx.reply(`✅ *بوتك [ ${s.bot_name} ] دخل السيرفر!*`));
+        activeClients[userId].on('error', (err) => {
+            ctx.reply(`❌ *فشل:* ${err.message.includes('https') ? 'عنوان خاطئ' : 'السيرفر مغلق'}`);
+            if (activeClients[userId]) activeClients[userId].close();
+        });
+    } catch (e) { ctx.reply("❌ حدث خطأ في البيانات."); }
 });
 
-tgBot.action('settings', (ctx) => {
-    ctx.editMessageText('⚙️ *الإعدادات:*', Markup.inlineKeyboard([
-        [Markup.button.callback('🤖 تغيير الاسم', 'change_name')],
-        [Markup.button.callback('🔙 رجوع', 'main_menu')]
-    ]));
+tgBot.action(/^stop_srv_(\d+)$/, (ctx) => {
+    if (activeClients[ctx.from.id]) { activeClients[ctx.from.id].close(); delete activeClients[ctx.from.id]; }
+    ctx.answerCbQuery("🛑 تم الإيقاف");
 });
 
-tgBot.action('add_server', (ctx) => ctx.reply('📥 *أرسل البيانات (IP:PORT):*'));
-tgBot.action('change_name', (ctx) => ctx.reply('📝 *أرسل اسم البوت الجديد:*'));
-
-tgBot.action('start_bot', async (ctx) => {
-    const userId = ctx.from.id;
-    const h = db.get(`${userId}.host`); const p = db.get(`${userId}.port`);
-    const name = db.get(`${userId}.bot_name`) || "MaxBlack";
-    ctx.reply(`⏳ *جاري تشغيل بوتك [ ${name} ]...*`);
-    if (activeClients[userId]) try { activeClients[userId].close(); } catch (e) {}
-    activeClients[userId] = bedrock.createClient({ host: h, port: parseInt(p), username: name, offline: true, version: '1.21.130' });
-    activeClients[userId].on('spawn', () => ctx.reply(`✅ *بوتك متصل الآن بنجاح!*`));
+tgBot.action(/^del_srv_(\d+)$/, (ctx) => {
+    let servers = db.get(`${ctx.from.id}.servers`);
+    servers.splice(ctx.match[1], 1);
+    db.set(`${ctx.from.id}.servers`, servers);
+    ctx.editMessageText("✅ تم الحذف.", Markup.inlineKeyboard([[Markup.button.callback('🔙', 'my_servers')]]));
 });
 
-tgBot.action('stop_bot', (ctx) => {
-    const userId = ctx.from.id;
-    if (activeClients[userId]) { activeClients[userId].close(); delete activeClients[userId]; ctx.reply('🛑 *تم الإيقاف.*'); }
-});
-
-tgBot.action('delete_server', (ctx) => {
-    db.unset(`${ctx.from.id}.host`); db.unset(`${ctx.from.id}.port`);
-    ctx.reply('🗑️ *تم الحذف بنجاح.*');
-});
-
-// 🚀 تشغيل البوت مع تنظيف التحديثات القديمة
-tgBot.launch({ polling: { dropPendingUpdates: true } })
-    .then(() => console.log('🚀 نظام MaxBlack يعمل الآن بصيغة البطل!'));
+tgBot.launch({ polling: { dropPendingUpdates: true } });
+console.log('🚀 نظام MaxBlack المطور يعمل الآن!');
