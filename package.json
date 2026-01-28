@@ -1,7 +1,7 @@
 {
-  "name": "pedrock-server-manager",
+  "name": "easy-pedrock-manager",
   "version": "1.0.0",
-  "description": "نظام إدارة سيرفرات بيدروك مع واجهة إضافة",
+  "description": "نظام مبسط لإضافة سيرفرات بيدروك",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
