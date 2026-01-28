@@ -1,13 +1,17 @@
 {
-  "name": "easy-pedrock-manager",
+  "name": "pedrock-railway",
   "version": "1.0.0",
-  "description": "نظام مبسط لإضافة سيرفرات بيدروك",
+  "description": "نظام بيدروك 24/7 يعمل على Railway",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "telegraf": "^4.16.3",
-    "mineflayer": "^4.15.0"
+    "mineflayer": "^4.15.0",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
