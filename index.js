@@ -2,122 +2,127 @@ const { Telegraf, session, Markup } = require('telegraf');
 const bedrock = require('bedrock-protocol');
 const http = require('http');
 
-// نظام الاستدامة لـ Railway
-http.createServer((req, res) => res.end('MaxBlack Bot is Online ✅')).listen(process.env.PORT || 3000);
+// 🌐 نظام الاستدامة لـ Railway ومنع توقف البوت
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end("MaxBlack Ultra: Online ✅");
+}).listen(process.env.PORT || 3000);
 
 const TOKEN = "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
 const bot = new Telegraf(TOKEN);
 
-// تفعيل الجلسات لحل مشاكل إدخال البيانات
-bot.use(session());
+// ✅ تهيئة الجلسة لضمان حفظ بيانات السيرفر لكل مستخدم بشكل مستقل
+bot.use(session({
+    getSessionKey: (ctx) => ctx.from && ctx.chat && `${ctx.from.id}:${ctx.chat.id}`
+}));
 
-// تخزين العملاء النشطين (البوتات داخل السيرفرات)
+// تخزين العملاء والبيانات في الذاكرة
 let activeClients = {};
+let userData = {};
 
-// 🏁 قائمة التحكم الرئيسية
+// 🎨 قائمة التحكم الرئيسية
 const mainMenu = (userId) => {
-    const serverCount = data[userId]?.servers?.length || 0;
+    const serverCount = userData[userId]?.servers?.length || 0;
     return Markup.inlineKeyboard([
-        [Markup.button.callback('➕ إضافة سيرفر', 'add'), Markup.button.callback(`📂 السيرفرات (${serverCount})`, 'list')],
-        [Markup.button.callback('✏️ تغيير اسم البوت', 'change_name')],
+        [Markup.button.callback('➕ إضافة سيرفر جديد', 'add_server')],
+        [Markup.button.callback(`📂 قائمة السيرفرات (${serverCount})`, 'list_servers')],
+        [Markup.button.callback('✏️ تغيير اسم البوت', 'change_bot_name')],
         [Markup.button.url('👤 المبرمج', 'https://t.me/uuuaaw')]
     ]);
 };
 
-let data = {};
-
 bot.start(async (ctx) => {
     const userId = ctx.from.id.toString();
-    if (!data[userId]) {
-        data[userId] = { servers: [], botName: "MaxBlack_Bot", step: null };
+    if (!userData[userId]) {
+        userData[userId] = { servers: [], botName: "MaxBlack_Player", step: null };
     }
-    await ctx.reply(`🎮 أهلاً بك يا ${ctx.from.first_name} في بوت حماية السيرفرات!\n\nاسم البوت الحالي: ${data[userId].botName}`, mainMenu(userId));
+    await ctx.reply(`🎮 أهلاً بك في نظام MaxBlack Ultra!\n\nاسم البوت الحالي: ${userData[userId].botName}`, mainMenu(userId));
 });
 
-// ➕ إضافة سيرفر
-bot.action('add', async (ctx) => {
+// 🛠️ إضافة سيرفر جديد
+bot.action('add_server', async (ctx) => {
     const userId = ctx.from.id.toString();
-    data[userId].step = 'waiting_ip';
+    userData[userId].step = 'waiting_ip_port';
     await ctx.answerCbQuery();
-    await ctx.editMessageText("📝 أرسل IP السيرفر والبورت بهذا الشكل:\n\n `play.example.com:19132`", { parse_mode: 'Markdown' });
+    await ctx.editMessageText("📝 أرسل IP السيرفر والبورت معاً (مثال: `play.example.com:19132`)", { parse_mode: 'Markdown' });
 });
 
-// ✏️ تغيير الاسم
-bot.action('change_name', async (ctx) => {
+// 📂 عرض وإدارة السيرفرات
+bot.action('list_servers', async (ctx) => {
     const userId = ctx.from.id.toString();
-    data[userId].step = 'waiting_name';
-    await ctx.answerCbQuery();
-    await ctx.reply("✏️ أرسل اسم البوت الجديد (بدون مسافات):");
-});
-
-// 📂 عرض السيرفرات
-bot.action('list', async (ctx) => {
-    const userId = ctx.from.id.toString();
-    const servers = data[userId]?.servers || [];
+    const servers = userData[userId]?.servers || [];
     await ctx.answerCbQuery();
 
     if (servers.length === 0) {
         return ctx.editMessageText("📭 لا توجد سيرفرات مضافة حالياً.", mainMenu(userId));
     }
 
-    let msg = "📂 قائمة سيرفراتك:\n";
     const buttons = servers.map((s, i) => [Markup.button.callback(`🌍 ${s.ip}:${s.port}`, `manage_${i}`)]);
     buttons.push([Markup.button.callback('🏠 القائمة الرئيسية', 'home')]);
 
-    await ctx.editMessageText(msg, Markup.inlineKeyboard(buttons));
+    await ctx.editMessageText("📂 اختر سيرفر لإدارته:", Markup.inlineKeyboard(buttons));
 });
 
-// ⚙️ إدارة سيرفر محدد
+// ⚙️ نافذة التحكم بالسيرفر
 bot.action(/^manage_(\d+)$/, async (ctx) => {
     const userId = ctx.from.id.toString();
     const index = ctx.match[1];
-    const server = data[userId].servers[index];
-    const isRunning = activeClients[`${userId}_${index}`] ? "متصل ✅" : "مفصول 🔴";
+    const server = userData[userId].servers[index];
+    const clientKey = `${userId}_${index}`;
+    const status = activeClients[clientKey] ? "متصل ✅" : "مفصول 🔴";
 
-    await ctx.editMessageText(`🛠️ إدارة السيرفر: ${server.ip}\n📊 الحالة: ${isRunning}`, Markup.inlineKeyboard([
-        [Markup.button.callback(activeClients[`${userId}_${index}`] ? '🛑 إيقاف' : '⚡ تشغيل الاقتحام', `toggle_${index}`)],
-        [Markup.button.callback('🗑️ حذف السيرفر', `delete_${index}`)],
-        [Markup.button.callback('🔙 عودة', 'list')]
-    ]));
+    await ctx.editMessageText(`🛠️ إدارة السيرفر: \`${server.ip}:${server.port}\`\n📊 الحالة الحالية: ${status}`, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+            [Markup.button.callback(activeClients[clientKey] ? '⏹️ إيقاف البوت' : '▶️ دخول السيرفر', `toggle_${index}`)],
+            [Markup.button.callback('🗑️ حذف من القائمة', `delete_${index}`)],
+            [Markup.button.callback('🔙 عودة للقائمة', 'list_servers')]
+        ])
+    });
 });
 
-// 🔥 محرك التشغيل والإيقاف (يدعم جميع الإصدارات)
+// 🚀 محرك الدخول (يدعم جميع الإصدارات)
 bot.action(/^toggle_(\d+)$/, async (ctx) => {
     const userId = ctx.from.id.toString();
     const index = ctx.match[1];
-    const server = data[userId].servers[index];
-    const key = `${userId}_${index}`;
+    const server = userData[userId].servers[index];
+    const clientKey = `${userId}_${index}`;
 
-    if (activeClients[key]) {
-        activeClients[key].close();
-        delete activeClients[key];
-        await ctx.answerCbQuery("🛑 تم إيقاف البوت");
+    if (activeClients[clientKey]) {
+        activeClients[clientKey].close();
+        delete activeClients[clientKey];
+        await ctx.answerCbQuery("🛑 تم فصل البوت");
     } else {
-        await ctx.answerCbQuery("⏳ جاري الدخول...");
+        await ctx.answerCbQuery("⏳ جاري الاقتحام...");
         try {
-            activeClients[key] = bedrock.createClient({
+            activeClients[clientKey] = bedrock.createClient({
                 host: server.ip,
                 port: parseInt(server.port),
-                username: data[userId].botName,
+                username: userData[userId].botName,
                 offline: true,
-                version: false, // اكتشاف تلقائي لجميع الإصدارات
+                version: '1.21.50', // يدعم التحويل التلقائي للإصدار
+                connectTimeout: 30000,
                 skipPing: false
             });
 
-            activeClients[key].on('spawn', () => {
-                ctx.reply(`✅ البوت دخل السيرفر الآن: ${server.ip}`);
+            activeClients[clientKey].on('spawn', () => {
+                ctx.reply(`✅ نجح الاقتحام! البوت داخل السيرفر: ${server.ip}`);
             });
 
-            activeClients[key].on('error', (err) => {
-                delete activeClients[key];
-                ctx.reply(`❌ خطأ: ${err.message}`);
+            activeClients[clientKey].on('error', (err) => {
+                delete activeClients[clientKey];
+                ctx.reply(`❌ خطأ في الاتصال: ${err.message}`);
+            });
+
+            activeClients[clientKey].on('disconnect', () => {
+                delete activeClients[clientKey];
+                ctx.reply(`🔴 تم فصل البوت عن: ${server.ip}`);
             });
         } catch (e) {
-            ctx.reply("❌ فشل المحرك في الاتصال.");
+            ctx.reply("❌ فشل تشغيل محرك الاقتحام.");
         }
     }
-    // تحديث الواجهة
-    ctx.deleteMessage();
+    // تحديث الواجهة تلقائياً
     bot.start(ctx);
 });
 
@@ -125,47 +130,52 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
 bot.action(/^delete_(\d+)$/, async (ctx) => {
     const userId = ctx.from.id.toString();
     const index = ctx.match[1];
-    data[userId].servers.splice(index, 1);
-    await ctx.answerCbQuery("🗑️ تم الحذف");
-    ctx.deleteMessage();
+    userData[userId].servers.splice(index, 1);
+    await ctx.answerCbQuery("🗑️ تم الحذف من القائمة");
     bot.start(ctx);
 });
 
-// 🏠 العودة للرئيسية
-bot.action('home', (ctx) => {
-    ctx.answerCbQuery();
-    ctx.deleteMessage();
-    bot.start(ctx);
-});
-
-// ✉️ معالجة النصوص المرسلة (IP أو اسم)
+// ✏️ معالجة إدخال النصوص
 bot.on('text', async (ctx) => {
     const userId = ctx.from.id.toString();
-    const step = data[userId]?.step;
+    const step = userData[userId]?.step;
 
-    if (step === 'waiting_ip') {
+    if (step === 'waiting_ip_port') {
         const text = ctx.message.text.trim();
         if (text.includes(':')) {
             const [ip, port] = text.split(':');
-            data[userId].servers.push({ ip, port, id: Date.now() });
-            data[userId].step = null;
-            await ctx.reply("✅ تم إضافة السيرفر بنجاح!", mainMenu(userId));
+            userData[userId].servers.push({ ip, port: parseInt(port) || 19132 });
+            userData[userId].step = null;
+            await ctx.reply("✅ تم حفظ السيرفر بنجاح!", mainMenu(userId));
         } else {
-            await ctx.reply("❌ تنسيق خاطئ! أرسل الـ IP والبورت هكذا `ip:port`", { parse_mode: 'Markdown' });
+            await ctx.reply("❌ تنسيق خاطئ! يجب كتابة IP وبورت (مثال: `play.com:19132`)", { parse_mode: 'Markdown' });
         }
-    } 
-    else if (step === 'waiting_name') {
-        data[userId].botName = ctx.message.text.trim();
-        data[userId].step = null;
-        await ctx.reply(`✅ تم تغيير اسم البوت إلى: ${data[userId].botName}`, mainMenu(userId));
+    } else if (step === 'waiting_bot_name') {
+        userData[userId].botName = ctx.message.text.trim();
+        userData[userId].step = null;
+        await ctx.reply(`✅ تم تغيير اسم البوت إلى: ${userData[userId].botName}`, mainMenu(userId));
     }
 });
 
-// تشغيل
-bot.launch({ dropPendingUpdates: true })
-    .then(() => console.log('🚀 MaxBlack Bot is Ready!'))
-    .catch(err => console.log('❌ Error:', err.message));
+// 🏠 عودة للرئيسية
+bot.action('home', (ctx) => {
+    ctx.answerCbQuery();
+    bot.start(ctx);
+});
 
-// درع الحماية من الانهيار
-process.on('uncaughtException', e => console.log('Critical Error:', e));
-process.on('unhandledRejection', e => console.log('Critical Error:', e));
+// ✏️ طلب تغيير الاسم
+bot.action('change_bot_name', async (ctx) => {
+    const userId = ctx.from.id.toString();
+    userData[userId].step = 'waiting_bot_name';
+    await ctx.answerCbQuery();
+    await ctx.reply("✏️ أرسل اسم البوت الجديد:");
+});
+
+// 🛡️ معالجة خطأ الـ Conflict 409 الظاهر في سجلاتك
+bot.launch({ dropPendingUpdates: true })
+    .then(() => console.log('🚀 MaxBlack System is Active!'))
+    .catch(err => console.error('Bot Launch Error:', err));
+
+// منع انهيار البوت عند حدوث أخطاء غير متوقعة
+process.on('uncaughtException', (err) => console.error('Caught exception:', err));
+process.on('unhandledRejection', (reason, promise) => console.error('Unhandled Rejection:', reason));
