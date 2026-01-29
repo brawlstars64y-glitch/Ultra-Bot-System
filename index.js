@@ -9,10 +9,28 @@ http.createServer((req, res) => res.end('OK'))
 // ===== BOT =====
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
+// ===== CONFIG (قنوات الاشتراك) =====
+const CHANNELS = ['@N_NHGER', '@aternosbot24', '@sjxhhdbx72', '@vsyfyk'];
+
 // ===== STORAGE =====
 const servers = {}   // userId => [{host, port}]
 const clients = {}   // userId => client
 const waitIP = {}    // userId => true
+
+// ===== CHECK SUBSCRIPTION (فحص الاشتراك) =====
+async function isSubscribed(ctx) {
+  const uid = ctx.from.id;
+  for (const channel of CHANNELS) {
+    try {
+      const member = await ctx.telegram.getChatMember(channel, uid);
+      if (['left', 'kicked'].includes(member.status)) return false;
+    } catch (e) {
+      console.log(`خطأ في فحص قناة ${channel}:`, e.message);
+      // إذا كان البوت ليس أدمن في القناة سيتجاوز الفحص لضمان عدم التوقف
+    }
+  }
+  return true;
+}
 
 // ===== MENU =====
 function mainMenu() {
@@ -23,24 +41,35 @@ function mainMenu() {
 }
 
 // ===== START =====
-bot.start(ctx => {
-  ctx.reply(
-    '🎮 لوحة تحكم بسيطة\nاختر خيار:',
-    mainMenu()
-  )
+bot.start(async (ctx) => {
+  if (!(await isSubscribed(ctx))) {
+    return ctx.reply(
+      '⚠️ عذراً عزيزي، يجب عليك الاشتراك في قنوات البوت أولاً لاستخدامه:\n\n' +
+      '1️⃣ @N_NHGER\n2️⃣ @aternosbot24\n3️⃣ @sjxhhdbx72\n4️⃣ @vsyfyk\n\nاشترك ثم أرسل /start مجدداً.',
+      Markup.inlineKeyboard([
+        [Markup.button.url('القناة الأولى', 'https://t.me/N_NHGER')],
+        [Markup.button.url('القناة الثانية', 'https://t.me/aternosbot24')],
+        [Markup.button.url('القناة الثالثة', 'https://t.me/sjxhhdbx72')],
+        [Markup.button.url('القناة الرابعة', 'https://t.me/vsyfyk')]
+      ])
+    );
+  }
+  ctx.reply('🎮 لوحة تحكم بسيطة\nاختر خيار:', mainMenu());
 })
 
 // ===== ADD SERVER =====
-bot.action('ADD', ctx => {
+bot.action('ADD', async (ctx) => {
+  if (!(await isSubscribed(ctx))) return ctx.answerCbQuery('❌ اشترك بالقنوات أولاً!', { show_alert: true });
   ctx.answerCbQuery()
   waitIP[ctx.from.id] = true
   ctx.reply('📡 أرسل السيرفر هكذا:\nip:port')
 })
 
 // ===== RECEIVE IP =====
-bot.on('text', ctx => {
+bot.on('text', async (ctx) => {
   const uid = ctx.from.id
   if (!waitIP[uid]) return
+  if (!(await isSubscribed(ctx))) return ctx.reply('❌ اشترك بالقنوات أولاً ثم أرسل /start');
 
   const text = ctx.message.text.trim()
   if (!text.includes(':')) {
@@ -60,7 +89,8 @@ bot.on('text', ctx => {
 })
 
 // ===== LIST SERVERS =====
-bot.action('LIST', ctx => {
+bot.action('LIST', async (ctx) => {
+  if (!(await isSubscribed(ctx))) return ctx.answerCbQuery('❌ اشترك بالقنوات أولاً!', { show_alert: true });
   ctx.answerCbQuery()
   const list = servers[ctx.from.id]
 
@@ -73,12 +103,12 @@ bot.action('LIST', ctx => {
   )
 
   buttons.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
-
   ctx.reply('📂 اختر سيرفر:', Markup.inlineKeyboard(buttons))
 })
 
 // ===== SERVER MENU =====
-bot.action(/^SRV_(\d+)$/, ctx => {
+bot.action(/^SRV_(\d+)$/, async (ctx) => {
+  if (!(await isSubscribed(ctx))) return ctx.answerCbQuery('❌ اشترك بالقنوات أولاً!', { show_alert: true });
   ctx.answerCbQuery()
   const uid = ctx.from.id
   const id = ctx.match[1]
@@ -95,53 +125,46 @@ bot.action(/^SRV_(\d+)$/, ctx => {
 })
 
 // ===== TOGGLE BOT PLAYER =====
-bot.action(/^TOGGLE_(\d+)$/, ctx => {
+bot.action(/^TOGGLE_(\d+)$/, async (ctx) => {
+  if (!(await isSubscribed(ctx))) return ctx.answerCbQuery('❌ اشترك بالقنوات أولاً!', { show_alert: true });
   ctx.answerCbQuery()
   const uid = ctx.from.id
   const s = servers[uid][ctx.match[1]]
 
-  // STOP
   if (clients[uid]) {
     clients[uid].close()
     delete clients[uid]
     return ctx.reply('⏹ تم إيقاف البوت')
   }
 
-  // START
   ctx.reply('⏳ جاري الدخول...')
   try {
     const client = bedrock.createClient({
       host: s.host,
       port: parseInt(s.port),
       username: 'BotPlayer',
-      offline: true
+      offline: true,
+      version: '1.21.130' // أضفت هذا لضمان الدخول كما طلبت سابقاً
     })
 
     clients[uid] = client
-
-    client.on('spawn', () => {
-      ctx.reply('✅ البوت دخل السيرفر')
-    })
-
-    client.on('error', () => {
+    client.on('spawn', () => ctx.reply('✅ البوت دخل السيرفر'))
+    client.on('error', (err) => {
       delete clients[uid]
-      ctx.reply('❌ خرج البوت')
+      ctx.reply('❌ خرج البوت أو حدث خطأ')
     })
-
   } catch {
     ctx.reply('❌ فشل التشغيل')
   }
 })
 
-// ===== BACK =====
 bot.action('BACK', ctx => {
   ctx.answerCbQuery()
   ctx.reply('⬅️ رجوع', mainMenu())
 })
 
-// ===== SAFE =====
 process.on('uncaughtException', console.error)
 process.on('unhandledRejection', console.error)
 
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ BOT READY')
+console.log('✅ BOT READY WITH FORCED SUB')
