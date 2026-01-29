@@ -1,67 +1,73 @@
 const { Telegraf } = require('telegraf');
 const express = require('express');
-const fs = require('fs'); // ← جديد
+const fs = require('fs');
 
-// خادم Railway
+// خادم بسيط
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => res.json({ status: 'online' }));
-app.listen(PORT, () => console.log(`🚀 ${PORT}`));
+app.get('/health', (req, res) => res.json({ status: 'healthy' }));
+app.listen(PORT, () => console.log(`🚀 الخادم يعمل على ${PORT}`));
 
 // البوت
 const TOKEN = process.env.TELEGRAM_TOKEN || "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
 const bot = new Telegraf(TOKEN);
 
-// 📁 نظام تخزين السيرفرات
-const STORAGE_FILE = 'servers.json';
+// تخزين
+const STORAGE_FILE = 'data.json';
+let userData = {};
 
-// تحميل السيرفرات المحفوظة
-let userServers = {};
-try {
-    if (fs.existsSync(STORAGE_FILE)) {
-        userServers = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8'));
-        console.log(`📂 تم تحميل ${Object.keys(userServers).length} مستخدم`);
+// تحميل البيانات
+function loadData() {
+    try {
+        if (fs.existsSync(STORAGE_FILE)) {
+            userData = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8'));
+            console.log(`📂 تم تحميل ${Object.keys(userData).length} مستخدم`);
+        }
+    } catch (error) {
+        console.log('📭 لا توجد بيانات سابقة');
+        userData = {};
     }
-} catch (error) {
-    console.log('⚠️ لا توجد سيرفرات محفوظة');
-    userServers = {};
 }
 
-// حفظ السيرفرات
-function saveServers() {
+// حفظ البيانات
+function saveData() {
     try {
-        fs.writeFileSync(STORAGE_FILE, JSON.stringify(userServers, null, 2));
-        console.log('💾 تم حفظ السيرفرات');
+        fs.writeFileSync(STORAGE_FILE, JSON.stringify(userData, null, 2));
+        console.log('💾 تم حفظ البيانات');
     } catch (error) {
         console.error('❌ خطأ في الحفظ:', error.message);
     }
 }
 
-// تخزين المستخدمين الذين ينتظرون إضافة سيرفر
-let waitingForIP = {};
+// تحميل البيانات عند البدء
+loadData();
 
-// 🏁 أمر البداية مع زرين
+// 🏁 القائمة الرئيسية البسيطة
 bot.start(async (ctx) => {
     const userId = ctx.from.id.toString();
     
-    // عرض عدد السيرفرات الحالية
-    const userServerCount = userServers[userId] ? userServers[userId].length : 0;
+    // تهيئة المستخدم الجديد
+    if (!userData[userId]) {
+        userData[userId] = {
+            name: ctx.from.first_name,
+            servers: [],
+            botName: "Player", // الاسم الافتراضي للبوت
+            createdAt: new Date().toISOString()
+        };
+        saveData();
+    }
     
-    const keyboard = {
+    const menu = {
         reply_markup: {
             inline_keyboard: [
                 [
-                    {
-                        text: "➕ أضف سيرفر",
-                        callback_data: "add_server"
-                    }
+                    { text: "➕ أضف سيرفر", callback_data: "add_server" },
+                    { text: "📋 سيرفراتي", callback_data: "my_servers" }
                 ],
                 [
-                    {
-                        text: `📋 سيرفراتي (${userServerCount})`,
-                        callback_data: "my_servers"
-                    }
+                    { text: "✏️ تغيير اسم البوت", callback_data: "change_bot_name" }
                 ]
             ]
         }
@@ -70,157 +76,160 @@ bot.start(async (ctx) => {
     await ctx.reply(`
 🎮 *مرحباً ${ctx.from.first_name}!*
 
-✨ *بوت بيدروك مع حفظ السيرفرات*
+🛠️ *القائمة الرئيسية:*
 
-📊 *لديك ${userServerCount} سيرفر*
+1️⃣ *➕ أضف سيرفر* - إضافة سيرفر جديد
+2️⃣ *📋 سيرفراتي* - عرض سيرفراتك
+3️⃣ *✏️ تغيير اسم البوت* - تغيير اسم البوتات
 
-📌 *مثال:* play.example.com:19132
-
-👇 *اختر:*
+🤖 *اسم البوت الحالي:* ${userData[userId].botName}
+📊 *عدد السيرفرات:* ${userData[userId].servers.length}
     `.trim(), {
         parse_mode: 'Markdown',
-        ...keyboard
+        ...menu
     });
 });
 
-// ➕ زر إضافة سيرفر
+// ➕ إضافة سيرفر
 bot.action('add_server', async (ctx) => {
     await ctx.answerCbQuery();
     
-    // حفظ أن المستخدم ينتظر IP
-    waitingForIP[ctx.from.id] = true;
+    const userId = ctx.from.id.toString();
+    userData[userId].waitingForIP = true;
     
     await ctx.editMessageText(`
-📝 *أضف سيرفر جديد*
+📝 *إضافة سيرفر جديد*
 
-✏️ *اكتب IP السيرفر بالتنسيق:*
+✏️ *اكتب IP السيرفر:*
+🌐 **مثال:** play.example.com:19132
 
-🌐 **ip:port**
-
-📌 *أمثلة صحيحة:*
-• play.example.com:19132
-• mc.server.com:25565
-
+🎯 *بسيط جداً، فقط اكتب وانسى*
 👇 *اكتب الآن:* ip:port
     `.trim(), {
         parse_mode: 'Markdown'
     });
 });
 
-// 📨 استقبال IP:Port وحفظه
+// 📨 استقبال IP
 bot.on('text', async (ctx) => {
     const userId = ctx.from.id.toString();
     const text = ctx.message.text.trim();
     
-    // إذا كان المستخدم ينتظر إضافة سيرفر
-    if (waitingForIP[ctx.from.id]) {
-        // تجاهل الأوامر
-        if (text.startsWith('/')) {
-            waitingForIP[ctx.from.id] = false;
-            return;
-        }
+    // إذا كان ينتظر إضافة سيرفر
+    if (userData[userId] && userData[userId].waitingForIP) {
+        delete userData[userId].waitingForIP;
         
-        // فحص التنسيق ip:port
         if (text.includes(':') && text.split(':').length === 2) {
             const [ip, portStr] = text.split(':');
             const port = parseInt(portStr);
             
-            if (ip && ip.length > 3 && port && port > 0 && port < 65536) {
-                // نجاح - حفظ السيرفر
-                waitingForIP[ctx.from.id] = false;
-                
-                // إنشاء كائن السيرفر
+            if (ip && port && port > 0 && port < 65536) {
+                // إضافة السيرفر
                 const server = {
                     id: Date.now(),
                     ip: ip,
                     port: port,
-                    fullAddress: `${ip}:${port}`,
-                    addedAt: new Date().toLocaleString('ar-SA'),
-                    name: `سيرفر ${ip.split('.')[0]}`,
-                    status: 'active',
-                    bots: 0
+                    added: new Date().toLocaleString('ar-SA'),
+                    name: `سيرفر ${userData[userId].servers.length + 1}`
                 };
                 
-                // حفظ في التخزين
-                if (!userServers[userId]) {
-                    userServers[userId] = [];
-                }
+                userData[userId].servers.push(server);
+                saveData();
                 
-                userServers[userId].push(server);
-                saveServers(); // ← حفظ في الملف
-                
-                const successKeyboard = {
+                await ctx.reply(`
+✅ *تم إضافة السيرفر!*
+
+🎮 ${server.name}
+🌐 ${ip}:${port}
+📅 ${server.added}
+
+👇 *اضغط "📋 سيرفراتي" لرؤيته*
+                `.trim(), {
+                    parse_mode: 'Markdown',
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                {
-                                    text: "🚀 تشغيل 2 بوت",
-                                    callback_data: `start_${server.id}`
-                                },
-                                {
-                                    text: "➕ أضف آخر",
-                                    callback_data: "add_server"
-                                }
-                            ],
-                            [
-                                {
-                                    text: "📋 سيرفراتي",
-                                    callback_data: "my_servers"
-                                }
+                                { text: "📋 سيرفراتي", callback_data: "my_servers" },
+                                { text: "➕ أضف آخر", callback_data: "add_server" }
                             ]
                         ]
                     }
-                };
-                
-                await ctx.reply(`
-✅ *تم إضافة السيرفر وحفظه!*
-
-🎮 **الاسم:** ${server.name}
-🌐 **IP:** ${ip}:${port}
-📅 **أضيف في:** ${server.addedAt}
-📊 **رقم السيرفر:** ${userServers[userId].length}
-
-💾 *تم حفظ السيرفر وسيبقى متاحاً دائماً*
-
-👇 *ماذا تريد الآن؟*
-                `.trim(), {
-                    parse_mode: 'Markdown',
-                    ...successKeyboard
                 });
-                
             } else {
-                await ctx.reply(`
-❌ *بورت غير صحيح!*
-
-✏️ *جرب مرة أخرى:* ip:port
-                `.trim(), {
-                    parse_mode: 'Markdown'
+                await ctx.reply('❌ *بورت غير صحيح*\nجرب: play.example.com:19132', {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "🔄 حاول مرة أخرى", callback_data: "add_server" }
+                            ]
+                        ]
+                    }
                 });
             }
         } else {
+            await ctx.reply('❌ *تنسيق خاطئ*\nيجب أن يكون: ip:port', {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "🔄 حاول مرة أخرى", callback_data: "add_server" }
+                        ]
+                    ]
+                }
+            });
+        }
+    }
+    
+    // إذا كان ينتظر تغيير اسم البوت
+    else if (userData[userId] && userData[userId].waitingForBotName) {
+        delete userData[userId].waitingForBotName;
+        
+        if (text.length > 2 && text.length < 20) {
+            userData[userId].botName = text;
+            saveData();
+            
             await ctx.reply(`
-❌ *تنسيق خاطئ!*
+✅ *تم تغيير اسم البوت!*
 
-📌 *استخدم:* **ip:port**
+🤖 **الاسم الجديد:** ${text}
 
-✏️ *جرب مرة أخرى:*
+🎮 *سيظهر هذا الاسم في سيرفر ماينكرافت*
             `.trim(), {
-                parse_mode: 'Markdown'
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "🏠 الرئيسية", callback_data: "main_menu" }
+                        ]
+                    ]
+                }
+            });
+        } else {
+            await ctx.reply('❌ *الاسم قصير أو طويل جداً*\nيجب أن يكون بين 3 و 20 حرف', {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "🔄 حاول مرة أخرى", callback_data: "change_bot_name" }
+                        ]
+                    ]
+                }
             });
         }
     }
 });
 
-// 📋 عرض سيرفراتي
+// 📋 سيرفراتي
 bot.action('my_servers', async (ctx) => {
     await ctx.answerCbQuery();
     
     const userId = ctx.from.id.toString();
-    const servers = userServers[userId] || [];
+    const servers = userData[userId] ? userData[userId].servers : [];
     
     if (servers.length === 0) {
         await ctx.editMessageText(`
-📭 *لا توجد سيرفرات محفوظة*
+📭 *لا توجد سيرفرات*
 
 لم تقم بإضافة أي سيرفرات بعد.
 
@@ -230,10 +239,10 @@ bot.action('my_servers', async (ctx) => {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        {
-                            text: "➕ أضف سيرفر الآن",
-                            callback_data: "add_server"
-                        }
+                        { text: "➕ أضف سيرفر", callback_data: "add_server" }
+                    ],
+                    [
+                        { text: "🏠 الرئيسية", callback_data: "main_menu" }
                     ]
                 ]
             }
@@ -241,80 +250,147 @@ bot.action('my_servers', async (ctx) => {
         return;
     }
     
-    // بناء رسالة السيرفرات
+    // بناء قائمة السيرفرات
     let message = `📋 *سيرفراتك (${servers.length})*\n\n`;
     
     servers.forEach((server, index) => {
         message += `*${index + 1}. ${server.name}*\n`;
-        message += `🌐 ${server.fullAddress}\n`;
-        message += `📅 ${server.addedAt}\n`;
-        message += `🤖 ${server.bots} بوت نشط\n\n`;
+        message += `🌐 ${server.ip}:${server.port}\n`;
+        message += `🤖 ${userData[userId].botName}\n`;
+        message += `📅 ${server.added}\n\n`;
     });
     
-    // بناء أزرار السيرفرات
-    const serverButtons = servers.map(server => [
+    message += `🎯 *اسم البوت الحالي:* ${userData[userId].botName}`;
+    
+    const buttons = servers.map(server => [
         {
             text: `🎮 ${server.name}`,
-            callback_data: `manage_${server.id}`
+            callback_data: `server_${server.id}`
         }
     ]);
     
-    // أزرار إضافية
-    serverButtons.push([
-        {
-            text: "➕ أضف جديد",
-            callback_data: "add_server"
-        },
-        {
-            text: "🗑️ مسح الكل",
-            callback_data: "delete_all"
-        }
+    buttons.push([
+        { text: "➕ أضف سيرفر", callback_data: "add_server" },
+        { text: "✏️ تغيير اسم", callback_data: "change_bot_name" }
     ]);
+    
+    buttons.push([{ text: "🏠 الرئيسية", callback_data: "main_menu" }]);
     
     await ctx.editMessageText(message, {
         parse_mode: 'Markdown',
         reply_markup: {
-            inline_keyboard: serverButtons
+            inline_keyboard: buttons
         }
     });
 });
 
-// 🚀 تشغيل البوتات للسيرفر
+// ✏️ تغيير اسم البوت
+bot.action('change_bot_name', async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const userId = ctx.from.id.toString();
+    const currentName = userData[userId] ? userData[userId].botName : "Player";
+    
+    userData[userId].waitingForBotName = true;
+    
+    await ctx.editMessageText(`
+✏️ *تغيير اسم البوت*
+
+🤖 *الاسم الحالي:* ${currentName}
+
+📝 *اكتب الاسم الجديد للبوت:*
+
+📌 *مقترحات:*
+• Player
+• Guard
+• Bot
+• AFK_Player
+• أي اسم تريده
+
+⚠️ *سيظهر هذا الاسم في سيرفر ماينكرافت*
+
+👇 *اكتب الاسم الجديد الآن:*
+    `.trim(), {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "❌ إلغاء", callback_data: "main_menu" }
+                ]
+            ]
+        }
+    });
+});
+
+// 🎮 إدارة سيرفر معين
+bot.action(/^server_/, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const serverId = ctx.callbackQuery.data.split('_')[1];
+    const userId = ctx.from.id.toString();
+    const servers = userData[userId] ? userData[userId].servers : [];
+    const server = servers.find(s => s.id == serverId);
+    
+    if (!server) {
+        await ctx.answerCbQuery('❌ السيرفر غير موجود', { show_alert: true });
+        return;
+    }
+    
+    await ctx.editMessageText(`
+🎮 *إدارة السيرفر*
+
+📛 ${server.name}
+🌐 ${server.ip}:${server.port}
+🤖 ${userData[userId].botName}
+📅 ${server.added}
+
+👇 *اختر الإجراء:*
+    `.trim(), {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "🚀 تشغيل بوتات", callback_data: `start_${server.id}` },
+                    { text: "✏️ تعديل اسم", callback_data: `rename_${server.id}` }
+                ],
+                [
+                    { text: "🗑️ حذف", callback_data: `delete_${server.id}` }
+                ],
+                [
+                    { text: "📋 كل السيرفرات", callback_data: "my_servers" },
+                    { text: "🏠 الرئيسية", callback_data: "main_menu" }
+                ]
+            ]
+        }
+    });
+});
+
+// 🚀 تشغيل البوتات
 bot.action(/^start_/, async (ctx) => {
     await ctx.answerCbQuery('جاري التشغيل...');
     
     const serverId = ctx.callbackQuery.data.split('_')[1];
     const userId = ctx.from.id.toString();
-    
-    // البحث عن السيرفر
-    const servers = userServers[userId] || [];
+    const servers = userData[userId] ? userData[userId].servers : [];
     const server = servers.find(s => s.id == serverId);
+    const botName = userData[userId].botName;
     
     if (server) {
-        // تحديث عدد البوتات
-        server.bots = 2;
-        saveServers();
-        
         await ctx.editMessageText(`
 🚀 *جاري تشغيل البوتات...*
 
-✅ **السيرفر:** ${server.fullAddress}
-🤖 **عدد البوتات:** 2
-📊 **الحالة:** البوتات تعمل الآن
-💾 **محفوظ:** نعم، سيبقى السيرفر محفوظاً
+✅ **السيرفر:** ${server.ip}:${server.port}
+🤖 **اسم البوت:** ${botName}
+🔢 **عدد البوتات:** 2
 
-🎮 *يمكنك الآن فتح ماينكرافت والاتصال بالسيرفر*
-
-👇 *لإضافة سيرفر آخر:*
+🎮 *البوتات تعمل الآن باسم "${botName}" في السيرفر*
         `.trim(), {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
                     [
-                        {
-                            text: "➕ أضف سيرفر آخر",
-                            callback_data: "add_server"
-                        }
+                        { text: "📋 السيرفرات", callback_data: "my_servers" },
+                        { text: "🏠 الرئيسية", callback_data: "main_menu" }
                     ]
                 ]
             }
@@ -322,76 +398,163 @@ bot.action(/^start_/, async (ctx) => {
     }
 });
 
-// 🗑️ مسح جميع السيرفرات
-bot.action('delete_all', async (ctx) => {
+// ✏️ تعديل اسم سيرفر
+bot.action(/^rename_/, async (ctx) => {
     await ctx.answerCbQuery();
     
+    const serverId = ctx.callbackQuery.data.split('_')[1];
     const userId = ctx.from.id.toString();
-    const serverCount = userServers[userId] ? userServers[userId].length : 0;
+    const servers = userData[userId] ? userData[userId].servers : [];
+    const serverIndex = servers.findIndex(s => s.id == serverId);
     
-    if (serverCount === 0) {
-        await ctx.answerCbQuery('لا توجد سيرفرات', { show_alert: true });
-        return;
-    }
-    
-    const confirmKeyboard = {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    {
-                        text: "✅ نعم، امسح الكل",
-                        callback_data: "confirm_delete_all"
-                    },
-                    {
-                        text: "❌ لا، إلغاء",
-                        callback_data: "my_servers"
-                    }
+    if (serverIndex !== -1) {
+        userData[userId].waitingForServerName = serverId;
+        
+        await ctx.editMessageText(`
+✏️ *تغيير اسم السيرفر*
+
+🌐 السيرفر الحالي: ${servers[serverIndex].ip}:${servers[serverIndex].port}
+
+📝 *اكتب الاسم الجديد للسيرفر:*
+
+👇 *اكتب الآن:*
+        `.trim(), {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "❌ إلغاء", callback_data: `server_${serverId}` }
+                    ]
                 ]
-            ]
-        }
-    };
+            }
+        });
+    }
+});
+
+// 🗑️ حذف سيرفر
+bot.action(/^delete_/, async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const serverId = ctx.callbackQuery.data.split('_')[1];
+    const userId = ctx.from.id.toString();
     
     await ctx.editMessageText(`
-⚠️ *تحذير!*
+🗑️ *حذف السيرفر*
 
-🗑️ **ستقوم بحذف ${serverCount} سيرفر**
+⚠️ **هل أنت متأكد من الحذف؟**
 
 ❌ *هذا الإجراء لا يمكن التراجع عنه*
 
-👇 *هل أنت متأكد؟*
-    `.trim(), {
-        parse_mode: 'Markdown',
-        ...confirmKeyboard
-    });
-});
-
-// تأكيد المسح
-bot.action('confirm_delete_all', async (ctx) => {
-    await ctx.answerCbQuery('جاري الحذف...');
-    
-    const userId = ctx.from.id.toString();
-    const deletedCount = userServers[userId] ? userServers[userId].length : 0;
-    
-    // حذف جميع سيرفرات المستخدم
-    delete userServers[userId];
-    saveServers();
-    
-    await ctx.editMessageText(`
-🗑️ *تم حذف جميع السيرفرات*
-
-✅ **تم حذف:** ${deletedCount} سيرفر
-📭 **السيرفرات الآن:** 0
-
-👇 *لإضافة سيرفر جديد:*
+👇 *تأكيد:*
     `.trim(), {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
                 [
-                    {
-                        text: "➕ أضف سيرفر جديد",
-                        callback_data: "add_server"
-                    }
+                    { text: "✅ نعم، احذف", callback_data: `confirm_delete_${serverId}` },
+                    { text: "❌ لا، إلغاء", callback_data: `server_${serverId}` }
+                ]
+            ]
+        }
+    });
+});
+
+// تأكيد الحذف
+bot.action(/^confirm_delete_/, async (ctx) => {
+    await ctx.answerCbQuery('جاري الحذف...');
+    
+    const serverId = ctx.callbackQuery.data.split('_')[2];
+    const userId = ctx.from.id.toString();
+    
+    if (userData[userId] && userData[userId].servers) {
+        userData[userId].servers = userData[userId].servers.filter(s => s.id != serverId);
+        saveData();
+        
+        await ctx.editMessageText(`
+✅ *تم حذف السيرفر*
+
+🗑️ تم إزالة السيرفر من قائمتك.
+
+👇 *العودة للقائمة:*
+        `.trim(), {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "📋 سيرفراتي", callback_data: "my_servers" },
+                        { text: "🏠 الرئيسية", callback_data: "main_menu" }
+                    ]
+                ]
+            }
+        });
+    }
+});
+
+// 🏠 العودة للرئيسية
+bot.action('main_menu', async (ctx) => {
+    await ctx.answerCbQuery();
+    ctx.callbackQuery.data = null;
+    bot.start(ctx);
+});
+
+// استقبال أسماء السيرفرات
+bot.on('text', async (ctx) => {
+    const userId = ctx.from.id.toString();
+    const text = ctx.message.text.trim();
+    
+    if (userData[userId] && userData[userId].waitingForServerName) {
+        const serverId = userData[userId].waitingForServerName;
+        delete userData[userId].waitingForServerName;
+        
+        const servers = userData[userId].servers;
+        const serverIndex = servers.findIndex(s => s.id == serverId);
+        
+        if (serverIndex !== -1 && text.length > 0) {
+            servers[serverIndex].name = text;
+            saveData();
+            
+            await ctx.reply(`
+✅ *تم تغيير اسم السيرفر!*
+
+🔄 **الاسم الجديد:** ${text}
+
+👇 *العودة لإدارة السيرفر:*
+            `.trim(), {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "🎮 إدارة السيرفر", callback_data: `server_${serverId}` },
+                            { text: "📋 كل السيرفرات", callback_data: "my_servers" }
+                        ]
+                    ]
+                }
+            });
+        }
+    }
+});
+
+// 🆘 المساعدة
+bot.help(async (ctx) => {
+    await ctx.reply(`
+🆘 *كيفية الاستخدام:*
+
+1️⃣ *أضف سيرفر:* اضغط ➕ ثم اكتب ip:port
+2️⃣ *شاهد سيرفراتك:* اضغط 📋
+3️⃣ *غير اسم البوت:* اضغط ✏️ ثم اكتب الاسم الجديد
+
+📌 *أمثلة:*
+• play.example.com:19132
+• mc.server.com:25565
+• 192.168.1.100:25565
+
+🎮 *بعدها البوتات تعمل تلقائياً باسمك المختار*
+    `.trim(), {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "🏠 ابدأ الآن", callback_data: "main_menu" }
                 ]
             ]
         }
@@ -399,30 +562,41 @@ bot.action('confirm_delete_all', async (ctx) => {
 });
 
 // 🔧 معالجة الأخطاء
-bot.catch((err) => {
-    console.error('❌ خطأ في البوت:', err.message);
+bot.catch((err, ctx) => {
+    console.error('❌ خطأ:', err.message);
+    if (ctx && ctx.reply) {
+        ctx.reply('⚠️ حدث خطأ، جرب مرة أخرى', {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "🔄 حاول مرة أخرى", callback_data: "main_menu" }
+                    ]
+                ]
+            }
+        });
+    }
 });
 
 // 🚀 تشغيل البوت
 bot.launch()
     .then(() => {
-        console.log('✅ البوت يعمل مع نظام حفظ السيرفرات!');
-        console.log('💾 يتم حفظ السيرفرات في servers.json');
-        console.log('📱 أرسل /start للتجربة');
+        console.log('✅ البوت يعمل بنجاح!');
+        console.log('🎯 واجهة بسيطة: إضافة، سيرفراتي، تغيير اسم');
+        console.log('📱 أرسل /start للبدء');
     })
     .catch(err => {
         console.error('💥 فشل التشغيل:', err.message);
     });
 
-// 🛑 إيقاف نظيف مع حفظ البيانات
+// 💾 حفظ البيانات عند الإيقاف
 process.once('SIGINT', () => {
-    console.log('💾 جاري حفظ البيانات قبل الإيقاف...');
-    saveServers();
+    console.log('💾 حفظ البيانات...');
+    saveData();
     bot.stop('SIGINT');
 });
 
 process.once('SIGTERM', () => {
-    console.log('💾 جاري حفظ البيانات قبل الإيقاف...');
-    saveServers();
+    console.log('💾 حفظ البيانات...');
+    saveData();
     bot.stop('SIGTERM');
 });
