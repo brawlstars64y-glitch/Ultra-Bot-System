@@ -1,62 +1,48 @@
 const { Telegraf, session, Markup } = require('telegraf');
+const bedrock = require('bedrock-protocol');
 const http = require('http');
 
-// 🌐 منع توقف البوت على Railway
-http.createServer((req, res) => {
-    res.end("Bot is Running ✅");
-}).listen(process.env.PORT || 3000);
+// استدامة على Railway
+http.createServer((req, res) => res.end("MaxBlack Online ✅")).listen(process.env.PORT || 3000);
 
-const TOKEN = "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
-const bot = new Telegraf(TOKEN);
-
-// تحميل المكتبة بحذر شديد
-let bedrock;
-try {
-    bedrock = require('bedrock-protocol');
-} catch (e) {
-    console.log("⚠️ مكتبة bedrock-protocol غير موجودة");
-}
-
-// تهيئة الجلسة والبيانات
+const bot = new Telegraf("8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ");
 bot.use(session());
+
 let userData = {};
 let activeClients = {};
 
-// القائمة
 const menu = (uid) => {
-    const count = userData[uid]?.servers?.length || 0;
+    const servers = userData[uid]?.servers?.length || 0;
     return Markup.inlineKeyboard([
-        [Markup.button.callback('➕ إضافة سيرفر', 'add'), Markup.button.callback(`📂 السيرفرات (${count})`, 'list')],
-        [Markup.button.callback('✏️ الاسم', 'name'), Markup.button.callback('📊 الحالة', 'status')]
+        [Markup.button.callback('➕ إضافة سيرفر', 'add'), Markup.button.callback(`📂 سيرفراتك (${servers})`, 'list')],
+        [Markup.button.callback('✏️ اسم البوت', 'name'), Markup.button.callback('📊 الحالة', 'status')]
     ]);
 };
 
 bot.start(async (ctx) => {
     const uid = ctx.from.id.toString();
     userData[uid] = userData[uid] || { servers: [], botName: "Max_Player", step: null };
-    await ctx.reply(`👋 أهلاً بك! البوت شغال الآن.\nاسمك المسجل: ${userData[uid].botName}`, menu(uid));
+    await ctx.reply(`🎮 نظام الاقتحام جاهز\nاسم البوت: ${userData[uid].botName}`, menu(uid));
 });
 
-// إضافة سيرفر
-bot.action('add', async (ctx) => {
-    const uid = ctx.from.id.toString();
-    userData[uid].step = 'get_ip';
-    await ctx.answerCbQuery();
-    await ctx.reply("أرسل IP السيرفر والبورت (مثال play.com:19132):");
+bot.action('add', (ctx) => {
+    userData[ctx.from.id].step = 'get_ip';
+    ctx.answerCbQuery();
+    ctx.reply("📝 أرسل IP السيرفر والبورت (مثال: play.com:19132)");
 });
 
-// معالجة الرسائل
 bot.on('text', async (ctx) => {
     const uid = ctx.from.id.toString();
     const user = userData[uid];
     if (!user || !user.step) return;
 
     if (user.step === 'get_ip') {
-        if (ctx.message.text.includes(':')) {
-            const [ip, port] = ctx.message.text.split(':');
-            user.servers.push({ ip: ip.trim(), port: port.trim() });
+        const input = ctx.message.text.trim();
+        if (input.includes(':')) {
+            const [ip, port] = input.split(':');
+            user.servers.push({ ip: ip.trim(), port: parseInt(port.trim()) || 19132 });
             user.step = null;
-            await ctx.reply("✅ تمت الإضافة!", menu(uid));
+            await ctx.reply("✅ تم حفظ السيرفر", menu(uid));
         } else {
             await ctx.reply("❌ أرسل التنسيق الصحيح ip:port");
         }
@@ -67,32 +53,84 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// الحالة (أصلحتها لك تماماً)
-bot.action('status', async (ctx) => {
-    const uid = ctx.from.id.toString();
-    let live = 0;
-    for (let key in activeClients) if (key.startsWith(uid)) live++;
-    
-    await ctx.answerCbQuery();
-    await ctx.reply(`📊 تقريرك:\n- سيرفرات مخزنة: ${userData[uid]?.servers?.length || 0}\n- بوتات متصلة الآن: ${live}`);
-});
-
-bot.action('name', (ctx) => {
-    userData[ctx.from.id].step = 'name';
-    ctx.answerCbQuery();
-    ctx.reply("أرسل اسم البوت الجديد:");
-});
-
 bot.action('list', async (ctx) => {
     const uid = ctx.from.id;
     const servers = userData[uid]?.servers || [];
-    if (servers.length === 0) return ctx.answerCbQuery("القائمة فارغة!");
-    const btns = servers.map((s, i) => [Markup.button.callback(`${s.ip}:${s.port}`, `manage_${i}`)]);
-    await ctx.editMessageText("سيرفراتك:", Markup.inlineKeyboard(btns));
+    if (servers.length === 0) return ctx.answerCbQuery("لا يوجد سيرفرات");
+    const btns = servers.map((s, i) => [Markup.button.callback(`🌍 ${s.ip}:${s.port}`, `manage_${i}`)]);
+    btns.push([Markup.button.callback('🏠 رجوع', 'home')]);
+    await ctx.editMessageText("اختر سيرفر:", Markup.inlineKeyboard(btns));
 });
 
-// تشغيل البوت مع تنظيف الرسائل القديمة (أهم سطر للرد)
-bot.launch({ dropPendingUpdates: true });
+bot.action(/^manage_(\d+)$/, async (ctx) => {
+    const idx = ctx.match[1];
+    const s = userData[ctx.from.id].servers[idx];
+    const key = `${ctx.from.id}_${idx}`;
+    const status = activeClients[key] ? "متصل ✅" : "مفصول 🔴";
+    await ctx.editMessageText(`📍 سيرفر: ${s.ip}\n📊 الحالة: ${status}`, Markup.inlineKeyboard([
+        [Markup.button.callback(activeClients[key] ? '🛑 إيقاف' : '▶️ دخول الآن', `toggle_${idx}`)],
+        [Markup.button.callback('🗑️ حذف', `del_${idx}`), Markup.button.callback('🔙', 'list')]
+    ]));
+});
 
-// درع الحماية من الكراش
-process.on('uncaughtException', (e) => console.log('Error Handled:', e.message));
+// 🔥 إصلاح محرك الدخول (هنا حل مشكلتك)
+bot.action(/^toggle_(\d+)$/, async (ctx) => {
+    const uid = ctx.from.id;
+    const idx = ctx.match[1];
+    const s = userData[uid].servers[idx];
+    const key = `${uid}_${idx}`;
+
+    if (activeClients[key]) {
+        activeClients[key].close();
+        delete activeClients[key];
+        ctx.answerCbQuery("🔴 تم الخروج");
+    } else {
+        await ctx.answerCbQuery("⏳ جاري محاولة الدخول...");
+        try {
+            // ✅ الحل: استخدام نسخة بروتوكول مرنة وإضافة التحقق من الاتصال
+            activeClients[key] = bedrock.createClient({
+                host: s.ip,
+                port: s.port,
+                username: userData[uid].botName,
+                offline: true, // مهم جداً للسيرفرات المكركة
+                version: false, // يترك المكتبة تكتشف الإصدار تلقائياً
+                skipPing: false,
+                connectTimeout: 30000
+            });
+
+            activeClients[key].on('spawn', () => {
+                ctx.reply(`✅ نجح الدخول! البوت الآن داخل السيرفر: ${s.ip}`);
+            });
+
+            activeClients[key].on('error', (err) => {
+                delete activeClients[key];
+                ctx.reply(`❌ فشل الدخول: ${err.message}`);
+                console.log(err);
+            });
+
+            activeClients[key].on('disconnect', (packet) => {
+                delete activeClients[key];
+                ctx.reply(`🔴 انقطع الاتصال: ${packet.reason || 'السبب غير معروف'}`);
+            });
+
+        } catch (e) {
+            ctx.reply("❌ حدث خطأ داخلي في المحرك.");
+        }
+    }
+    // تحديث القائمة بعد المحاولة
+    bot.start(ctx);
+});
+
+bot.action('status', async (ctx) => {
+    const uid = ctx.from.id.toString();
+    let live = 0;
+    for (let k in activeClients) if (k.startsWith(uid)) live++;
+    ctx.answerCbQuery();
+    await ctx.reply(`📊 حالتك:\n- مخزن: ${userData[uid]?.servers?.length || 0}\n- متصل الآن: ${live}`);
+});
+
+bot.action('name', (ctx) => { userData[ctx.from.id].step = 'name'; ctx.answerCbQuery(); ctx.reply("أرسل الاسم الجديد:"); });
+bot.action('home', (ctx) => bot.start(ctx));
+bot.action(/^del_(\d+)$/, (ctx) => { userData[ctx.from.id].servers.splice(ctx.match[1], 1); bot.start(ctx); });
+
+bot.launch({ dropPendingUpdates: true });
