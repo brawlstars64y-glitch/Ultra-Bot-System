@@ -1,47 +1,50 @@
-const { Telegraf, Markup, session } = require('telegraf')
+const { Telegraf, Markup } = require('telegraf')
 const bedrock = require('bedrock-protocol')
 const http = require('http')
 
-// ===== Keep Alive (Railway) =====
-http.createServer((req, res) => res.end('OK')).listen(process.env.PORT || 3000)
+// ===== Keep Alive =====
+http.createServer((req, res) => res.end('OK'))
+  .listen(process.env.PORT || 3000)
 
 // ===== BOT =====
-const TOKEN = '8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ'
-const bot = new Telegraf(TOKEN)
-bot.use(session())
+const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
-// ===== STORAGE (RAM) =====
-const servers = {}   // { userId: [{host, port}] }
-const clients = {}   // { userId: bedrockClient }
+// ===== STORAGE =====
+const servers = {}   // userId => [{host, port}]
+const clients = {}   // userId => client
+const waitIP = {}    // userId => true
 
-// ===== MAIN MENU =====
-function menu() {
+// ===== MENU =====
+function mainMenu() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('➕ إضافة سيرفر', 'add')],
-    [Markup.button.callback('📂 سيرفراتي', 'list')]
+    [Markup.button.callback('➕ إضافة سيرفر', 'ADD')],
+    [Markup.button.callback('📂 سيرفراتي', 'LIST')]
   ])
 }
 
+// ===== START =====
 bot.start(ctx => {
-  ctx.reply('🎮 *لوحة التحكم*\nاختر خيار:', {
-    parse_mode: 'Markdown',
-    ...menu()
-  })
+  ctx.reply(
+    '🎮 لوحة تحكم بسيطة\nاختر خيار:',
+    mainMenu()
+  )
 })
 
 // ===== ADD SERVER =====
-bot.action('add', ctx => {
+bot.action('ADD', ctx => {
   ctx.answerCbQuery()
-  ctx.session.step = 'wait_ip'
-  ctx.reply('📡 أرسل السيرفر بهذا الشكل:\n`ip:port`', { parse_mode: 'Markdown' })
+  waitIP[ctx.from.id] = true
+  ctx.reply('📡 أرسل السيرفر هكذا:\nip:port')
 })
 
+// ===== RECEIVE IP =====
 bot.on('text', ctx => {
-  if (ctx.session.step !== 'wait_ip') return
+  const uid = ctx.from.id
+  if (!waitIP[uid]) return
 
   const text = ctx.message.text.trim()
   if (!text.includes(':')) {
-    return ctx.reply('❌ خطأ\nاكتبها هكذا:\n`ip:port`', { parse_mode: 'Markdown' })
+    return ctx.reply('❌ خطأ\nاكتب ip:port')
   }
 
   const [host, port] = text.split(':')
@@ -49,49 +52,50 @@ bot.on('text', ctx => {
     return ctx.reply('❌ صيغة غير صحيحة')
   }
 
-  servers[ctx.from.id] = servers[ctx.from.id] || []
-  servers[ctx.from.id].push({ host, port })
+  servers[uid] = servers[uid] || []
+  servers[uid].push({ host, port })
 
-  ctx.session.step = null
-  ctx.reply('✅ تم إضافة السيرفر', menu())
+  delete waitIP[uid]
+  ctx.reply('✅ تم حفظ السيرفر', mainMenu())
 })
 
 // ===== LIST SERVERS =====
-bot.action('list', ctx => {
+bot.action('LIST', ctx => {
   ctx.answerCbQuery()
   const list = servers[ctx.from.id]
 
   if (!list || list.length === 0) {
-    return ctx.reply('📭 لا يوجد سيرفرات', menu())
+    return ctx.reply('📭 لا يوجد سيرفرات', mainMenu())
   }
 
-  const buttons = list.map((s, i) => [
-    Markup.button.callback(`${s.host}:${s.port}`, `srv_${i}`)
-  ])
+  const buttons = list.map((s, i) =>
+    [Markup.button.callback(`${s.host}:${s.port}`, `SRV_${i}`)]
+  )
 
-  buttons.push([Markup.button.callback('⬅️ رجوع', 'back')])
+  buttons.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
 
   ctx.reply('📂 اختر سيرفر:', Markup.inlineKeyboard(buttons))
 })
 
-// ===== SERVER CONTROL =====
-bot.action(/^srv_(\d+)$/, ctx => {
+// ===== SERVER MENU =====
+bot.action(/^SRV_(\d+)$/, ctx => {
   ctx.answerCbQuery()
+  const uid = ctx.from.id
   const id = ctx.match[1]
-  const s = servers[ctx.from.id][id]
-  const active = clients[ctx.from.id]
+  const s = servers[uid][id]
+  const active = clients[uid]
 
   ctx.reply(
-    `🖥️ ${s.host}:${s.port}\nالحالة: ${active ? '🟢 يعمل' : '🔴 متوقف'}`,
+    `🖥 ${s.host}:${s.port}\nالحالة: ${active ? '🟢 يعمل' : '🔴 متوقف'}`,
     Markup.inlineKeyboard([
-      [Markup.button.callback(active ? '⏹ إيقاف' : '▶️ تشغيل', `toggle_${id}`)],
-      [Markup.button.callback('⬅️ رجوع', 'list')]
+      [Markup.button.callback(active ? '⏹ إيقاف' : '▶️ تشغيل', `TOGGLE_${id}`)],
+      [Markup.button.callback('⬅️ رجوع', 'LIST')]
     ])
   )
 })
 
-// ===== START / STOP BOT PLAYER =====
-bot.action(/^toggle_(\d+)$/, ctx => {
+// ===== TOGGLE BOT PLAYER =====
+bot.action(/^TOGGLE_(\d+)$/, ctx => {
   ctx.answerCbQuery()
   const uid = ctx.from.id
   const s = servers[uid][ctx.match[1]]
@@ -104,9 +108,8 @@ bot.action(/^toggle_(\d+)$/, ctx => {
   }
 
   // START
+  ctx.reply('⏳ جاري الدخول...')
   try {
-    ctx.reply('⏳ جاري الدخول إلى السيرفر...')
-
     const client = bedrock.createClient({
       host: s.host,
       port: parseInt(s.port),
@@ -117,28 +120,28 @@ bot.action(/^toggle_(\d+)$/, ctx => {
     clients[uid] = client
 
     client.on('spawn', () => {
-      ctx.reply('✅ البوت دخل السيرفر وباقي فيه')
+      ctx.reply('✅ البوت دخل السيرفر')
     })
 
-    client.on('error', err => {
+    client.on('error', () => {
       delete clients[uid]
-      ctx.reply('❌ خرج البوت (السيرفر رفض الاتصال)')
+      ctx.reply('❌ خرج البوت')
     })
 
-  } catch (e) {
+  } catch {
     ctx.reply('❌ فشل التشغيل')
   }
 })
 
 // ===== BACK =====
-bot.action('back', ctx => {
+bot.action('BACK', ctx => {
   ctx.answerCbQuery()
-  ctx.reply('⬅️ رجوع', menu())
+  ctx.reply('⬅️ رجوع', mainMenu())
 })
 
-// ===== ANTI CRASH =====
-process.on('uncaughtException', e => console.error(e))
-process.on('unhandledRejection', e => console.error(e))
+// ===== SAFE =====
+process.on('uncaughtException', console.error)
+process.on('unhandledRejection', console.error)
 
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ BOT ONLINE')
+console.log('✅ BOT READY')
