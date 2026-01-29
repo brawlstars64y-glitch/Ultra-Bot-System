@@ -1,5 +1,5 @@
 {
-  "name": "aternos-bot",
+  "name": "simple-mc-bot",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
