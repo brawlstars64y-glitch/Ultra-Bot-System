@@ -3,13 +3,14 @@ const bedrock = require('bedrock-protocol');
 const http = require('http');
 
 // استدامة العمل على Railway
-http.createServer((req, res) => res.end("MaxBlack 1.21.130 Ready ✅")).listen(process.env.PORT || 3000);
+http.createServer((req, res) => res.end("Anti-AFK System Active 🛡️")).listen(process.env.PORT || 3000);
 
 const bot = new Telegraf("8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ");
 bot.use(session());
 
 let userData = {};
 let activeClients = {};
+let afkIntervals = {}; // لتخزين مؤقتات منع الطرد
 
 const getMenu = (uid) => {
     const servers = userData[uid]?.servers?.length || 0;
@@ -22,7 +23,7 @@ const getMenu = (uid) => {
 bot.start(async (ctx) => {
     const uid = ctx.from.id.toString();
     userData[uid] = userData[uid] || { servers: [], botName: "Max_Player", step: null };
-    await ctx.reply(`🎮 نظام الاقتحام (إصدارات 1.21.130)\nاسم البوت: ${userData[uid].botName}`, getMenu(uid));
+    await ctx.reply(`🎮 نظام ماكس بلاك (1.21.130)\n🛡️ نظام Anti-AFK: مفعّل تلقائياً`, getMenu(uid));
 });
 
 bot.action('add', (ctx) => {
@@ -42,7 +43,7 @@ bot.on('text', async (ctx) => {
             const [ip, port] = input.split(':');
             user.servers.push({ ip: ip.trim(), port: parseInt(port.trim()) || 19132 });
             user.step = null;
-            await ctx.reply("✅ تم حفظ السيرفر بنجاح", getMenu(uid));
+            await ctx.reply("✅ تم حفظ السيرفر", getMenu(uid));
         }
     } else if (user.step === 'name') {
         user.botName = ctx.message.text.trim();
@@ -67,12 +68,12 @@ bot.action(/^manage_(\d+)$/, async (ctx) => {
     const status = activeClients[key] ? "متصل ✅" : "مفصول 🔴";
     
     await ctx.editMessageText(`📍 سيرفر: ${s.ip}\n📊 الحالة: ${status}`, Markup.inlineKeyboard([
-        [Markup.button.callback(activeClients[key] ? '🛑 خروج' : '▶️ دخول (1.21.130)', `toggle_${idx}`)],
+        [Markup.button.callback(activeClients[key] ? '🛑 خروج' : '▶️ دخول الآن', `toggle_${idx}`)],
         [Markup.button.callback('🗑️ حذف', `del_${idx}`), Markup.button.callback('🔙 عودة', 'list')]
     ]));
 });
 
-// 🔥 محرك الدخول المحدث لدعم 1.21.130 / 1.21.132
+// 🔥 محرك الدخول مع Anti-AFK
 bot.action(/^toggle_(\d+)$/, async (ctx) => {
     const uid = ctx.from.id;
     const idx = ctx.match[1];
@@ -80,34 +81,43 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
     const key = `${uid}_${idx}`;
 
     if (activeClients[key]) {
-        try { activeClients[key].close(); } catch(e) {}
+        if (afkIntervals[key]) clearInterval(afkIntervals[key]);
+        activeClients[key].close();
         delete activeClients[key];
         ctx.answerCbQuery("🔴 تم الفصل");
     } else {
-        await ctx.answerCbQuery("⏳ جاري محاولة الاقتحام...");
+        await ctx.answerCbQuery("⏳ جاري الاقتحام...");
         try {
             activeClients[key] = bedrock.createClient({
                 host: s.ip,
                 port: s.port,
                 username: userData[uid].botName,
                 offline: true,
-                // ✅ تحديد النسخة المطلوبة بدقة
                 version: '1.21.130', 
-                connectTimeout: 40000,
-                skipPing: false
+                connectTimeout: 40000
             });
 
             activeClients[key].on('spawn', () => {
-                ctx.reply(`🚀 كفو! البوت دخل السيرفر بنجاح (إصدار 1.21.130)`);
+                ctx.reply(`🚀 كفو! البوت دخل السيرفر.\n🛡️ تم تفعيل Anti-AFK (التحرك التلقائي).`);
+
+                // نظام Anti-AFK: إرسال حزم حركة وهمية كل 10 ثوانٍ
+                afkIntervals[key] = setInterval(() => {
+                    if (activeClients[key]) {
+                        activeClients[key].queue('player_auth_input', {
+                            pitch: 0, yaw: 0, position: { x: 0, y: 0, z: 0 }, move_vector: { x: 0.1, z: 0.1 },
+                            head_yaw: 0, input_data: { jump_down: true }, input_mode: 'touch', play_mode: 'normal'
+                        });
+                    }
+                }, 10000);
             });
 
             activeClients[key].on('error', (err) => {
+                if (afkIntervals[key]) clearInterval(afkIntervals[key]);
                 delete activeClients[key];
-                ctx.reply(`❌ فشل الدخول: ${err.message}`);
-                console.log('Error Log:', err);
+                ctx.reply(`❌ فشل: ${err.message}`);
             });
 
-        } catch (e) { ctx.reply("❌ عطل فني في المحرك"); }
+        } catch (e) { ctx.reply("❌ عطل في المحرك"); }
     }
     bot.start(ctx);
 });
@@ -117,7 +127,7 @@ bot.action('status', async (ctx) => {
     let live = 0;
     for (let k in activeClients) if (k.startsWith(uid)) live++;
     ctx.answerCbQuery();
-    await ctx.reply(`📊 تقرير الحالة:\n- السيرفرات المضافة: ${userData[uid]?.servers?.length || 0}\n- النشطة حالياً: ${live}`);
+    await ctx.reply(`📊 تقرير الحالة:\n- السيرفرات: ${userData[uid]?.servers?.length || 0}\n- النشطة الآن: ${live}`);
 });
 
 bot.action('home', (ctx) => bot.start(ctx));
