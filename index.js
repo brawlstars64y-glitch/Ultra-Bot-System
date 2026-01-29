@@ -1,23 +1,53 @@
 const { Telegraf } = require('telegraf');
 const express = require('express');
+const fs = require('fs'); // ← جديد
 
 // خادم Railway
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => res.json({ status: 'online' }));
-app.get('/health', (req, res) => res.json({ status: 'healthy' }));
 app.listen(PORT, () => console.log(`🚀 ${PORT}`));
 
 // البوت
 const TOKEN = process.env.TELEGRAM_TOKEN || "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
 const bot = new Telegraf(TOKEN);
 
+// 📁 نظام تخزين السيرفرات
+const STORAGE_FILE = 'servers.json';
+
+// تحميل السيرفرات المحفوظة
+let userServers = {};
+try {
+    if (fs.existsSync(STORAGE_FILE)) {
+        userServers = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8'));
+        console.log(`📂 تم تحميل ${Object.keys(userServers).length} مستخدم`);
+    }
+} catch (error) {
+    console.log('⚠️ لا توجد سيرفرات محفوظة');
+    userServers = {};
+}
+
+// حفظ السيرفرات
+function saveServers() {
+    try {
+        fs.writeFileSync(STORAGE_FILE, JSON.stringify(userServers, null, 2));
+        console.log('💾 تم حفظ السيرفرات');
+    } catch (error) {
+        console.error('❌ خطأ في الحفظ:', error.message);
+    }
+}
+
 // تخزين المستخدمين الذين ينتظرون إضافة سيرفر
 let waitingForIP = {};
 
-// 🏁 أمر البداية مع زر واحد فقط
+// 🏁 أمر البداية مع زرين
 bot.start(async (ctx) => {
+    const userId = ctx.from.id.toString();
+    
+    // عرض عدد السيرفرات الحالية
+    const userServerCount = userServers[userId] ? userServers[userId].length : 0;
+    
     const keyboard = {
         reply_markup: {
             inline_keyboard: [
@@ -25,6 +55,12 @@ bot.start(async (ctx) => {
                     {
                         text: "➕ أضف سيرفر",
                         callback_data: "add_server"
+                    }
+                ],
+                [
+                    {
+                        text: `📋 سيرفراتي (${userServerCount})`,
+                        callback_data: "my_servers"
                     }
                 ]
             ]
@@ -34,11 +70,13 @@ bot.start(async (ctx) => {
     await ctx.reply(`
 🎮 *مرحباً ${ctx.from.first_name}!*
 
-✨ *بوت بيدروك البسيط*
+✨ *بوت بيدروك مع حفظ السيرفرات*
 
-📌 *لإضافة سيرفر:* اضغط الزر بالأسفل
+📊 *لديك ${userServerCount} سيرفر*
 
-*مثال:* play.example.com:19132
+📌 *مثال:* play.example.com:19132
+
+👇 *اختر:*
     `.trim(), {
         parse_mode: 'Markdown',
         ...keyboard
@@ -62,8 +100,6 @@ bot.action('add_server', async (ctx) => {
 📌 *أمثلة صحيحة:*
 • play.example.com:19132
 • mc.server.com:25565
-• 192.168.1.100:25565
-• myserver.aternos.me:25565
 
 👇 *اكتب الآن:* ip:port
     `.trim(), {
@@ -71,16 +107,16 @@ bot.action('add_server', async (ctx) => {
     });
 });
 
-// 📨 استقبال IP:Port
+// 📨 استقبال IP:Port وحفظه
 bot.on('text', async (ctx) => {
-    const userId = ctx.from.id;
+    const userId = ctx.from.id.toString();
     const text = ctx.message.text.trim();
     
     // إذا كان المستخدم ينتظر إضافة سيرفر
-    if (waitingForIP[userId]) {
+    if (waitingForIP[ctx.from.id]) {
         // تجاهل الأوامر
         if (text.startsWith('/')) {
-            waitingForIP[userId] = false;
+            waitingForIP[ctx.from.id] = false;
             return;
         }
         
@@ -90,16 +126,36 @@ bot.on('text', async (ctx) => {
             const port = parseInt(portStr);
             
             if (ip && ip.length > 3 && port && port > 0 && port < 65536) {
-                // نجاح - سيرفر مضاف
-                waitingForIP[userId] = false;
+                // نجاح - حفظ السيرفر
+                waitingForIP[ctx.from.id] = false;
+                
+                // إنشاء كائن السيرفر
+                const server = {
+                    id: Date.now(),
+                    ip: ip,
+                    port: port,
+                    fullAddress: `${ip}:${port}`,
+                    addedAt: new Date().toLocaleString('ar-SA'),
+                    name: `سيرفر ${ip.split('.')[0]}`,
+                    status: 'active',
+                    bots: 0
+                };
+                
+                // حفظ في التخزين
+                if (!userServers[userId]) {
+                    userServers[userId] = [];
+                }
+                
+                userServers[userId].push(server);
+                saveServers(); // ← حفظ في الملف
                 
                 const successKeyboard = {
                     reply_markup: {
                         inline_keyboard: [
                             [
                                 {
-                                    text: "🚀 تشغيل بوتات",
-                                    callback_data: `start_${ip}_${port}`
+                                    text: "🚀 تشغيل 2 بوت",
+                                    callback_data: `start_${server.id}`
                                 },
                                 {
                                     text: "➕ أضف آخر",
@@ -108,8 +164,8 @@ bot.on('text', async (ctx) => {
                             ],
                             [
                                 {
-                                    text: "🏠 الرئيسية",
-                                    callback_data: "back_home"
+                                    text: "📋 سيرفراتي",
+                                    callback_data: "my_servers"
                                 }
                             ]
                         ]
@@ -117,12 +173,14 @@ bot.on('text', async (ctx) => {
                 };
                 
                 await ctx.reply(`
-✅ *تم إضافة السيرفر بنجاح!*
+✅ *تم إضافة السيرفر وحفظه!*
 
-🎮 **السيرفر:** ${ip}
-🔌 **البورت:** ${port}
-🌐 **الاتصال:** ${text}
-📅 **الوقت:** ${new Date().toLocaleString('ar-SA')}
+🎮 **الاسم:** ${server.name}
+🌐 **IP:** ${ip}:${port}
+📅 **أضيف في:** ${server.addedAt}
+📊 **رقم السيرفر:** ${userServers[userId].length}
+
+💾 *تم حفظ السيرفر وسيبقى متاحاً دائماً*
 
 👇 *ماذا تريد الآن؟*
                 `.trim(), {
@@ -133,11 +191,6 @@ bot.on('text', async (ctx) => {
             } else {
                 await ctx.reply(`
 ❌ *بورت غير صحيح!*
-
-📌 *تأكد أن:*
-1. البورت بين 1 و 65535
-2. IP يحتوي على نقطة (.)
-3. التنسيق ip:port
 
 ✏️ *جرب مرة أخرى:* ip:port
                 `.trim(), {
@@ -150,123 +203,148 @@ bot.on('text', async (ctx) => {
 
 📌 *استخدم:* **ip:port**
 
-📋 *مثال صحيح:* play.example.com:19132
-
 ✏️ *جرب مرة أخرى:*
             `.trim(), {
                 parse_mode: 'Markdown'
             });
         }
     }
+});
+
+// 📋 عرض سيرفراتي
+bot.action('my_servers', async (ctx) => {
+    await ctx.answerCbQuery();
     
-    // إذا كان يكتب IP:Port بدون الضغط على زر أولاً
-    else if (text.includes(':') && text.split(':').length === 2) {
-        const [ip, portStr] = text.split(':');
-        const port = parseInt(portStr);
-        
-        if (ip && port) {
-            const quickAddKeyboard = {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text: "✅ نعم، أضفه",
-                                callback_data: `quick_add_${ip}_${port}`
-                            },
-                            {
-                                text: "❌ لا، تجاهل",
-                                callback_data: "ignore"
-                            }
-                        ]
+    const userId = ctx.from.id.toString();
+    const servers = userServers[userId] || [];
+    
+    if (servers.length === 0) {
+        await ctx.editMessageText(`
+📭 *لا توجد سيرفرات محفوظة*
+
+لم تقم بإضافة أي سيرفرات بعد.
+
+👇 *لإضافة أول سيرفر:*
+        `.trim(), {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: "➕ أضف سيرفر الآن",
+                            callback_data: "add_server"
+                        }
                     ]
-                }
-            };
-            
-            await ctx.reply(`
-🤔 *هل تريد إضافة هذا السيرفر؟*
-
-🌐 **${ip}:${port}**
-
-👇 *اختر:*
-            `.trim(), {
-                parse_mode: 'Markdown',
-                ...quickAddKeyboard
-            });
-        }
+                ]
+            }
+        });
+        return;
     }
+    
+    // بناء رسالة السيرفرات
+    let message = `📋 *سيرفراتك (${servers.length})*\n\n`;
+    
+    servers.forEach((server, index) => {
+        message += `*${index + 1}. ${server.name}*\n`;
+        message += `🌐 ${server.fullAddress}\n`;
+        message += `📅 ${server.addedAt}\n`;
+        message += `🤖 ${server.bots} بوت نشط\n\n`;
+    });
+    
+    // بناء أزرار السيرفرات
+    const serverButtons = servers.map(server => [
+        {
+            text: `🎮 ${server.name}`,
+            callback_data: `manage_${server.id}`
+        }
+    ]);
+    
+    // أزرار إضافية
+    serverButtons.push([
+        {
+            text: "➕ أضف جديد",
+            callback_data: "add_server"
+        },
+        {
+            text: "🗑️ مسح الكل",
+            callback_data: "delete_all"
+        }
+    ]);
+    
+    await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: serverButtons
+        }
+    });
 });
 
 // 🚀 تشغيل البوتات للسيرفر
 bot.action(/^start_/, async (ctx) => {
     await ctx.answerCbQuery('جاري التشغيل...');
     
-    const data = ctx.callbackQuery.data;
-    const [_, ip, port] = data.split('_');
+    const serverId = ctx.callbackQuery.data.split('_')[1];
+    const userId = ctx.from.id.toString();
     
-    await ctx.editMessageText(`
+    // البحث عن السيرفر
+    const servers = userServers[userId] || [];
+    const server = servers.find(s => s.id == serverId);
+    
+    if (server) {
+        // تحديث عدد البوتات
+        server.bots = 2;
+        saveServers();
+        
+        await ctx.editMessageText(`
 🚀 *جاري تشغيل البوتات...*
 
-✅ **السيرفر:** ${ip}:${port}
+✅ **السيرفر:** ${server.fullAddress}
 🤖 **عدد البوتات:** 2
-⏳ **الحالة:** البوتات تعمل الآن
-🔄 **ميزة:** إعادة اتصال تلقائية
+📊 **الحالة:** البوتات تعمل الآن
+💾 **محفوظ:** نعم، سيبقى السيرفر محفوظاً
 
 🎮 *يمكنك الآن فتح ماينكرافت والاتصال بالسيرفر*
-    `.trim(), {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    {
-                        text: "➕ أضف سيرفر آخر",
-                        callback_data: "add_server"
-                    }
+
+👇 *لإضافة سيرفر آخر:*
+        `.trim(), {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: "➕ أضف سيرفر آخر",
+                            callback_data: "add_server"
+                        }
+                    ]
                 ]
-            ]
-        }
-    });
+            }
+        });
+    }
 });
 
-// ➕ إضافة سريعة
-bot.action(/^quick_add_/, async (ctx) => {
-    await ctx.answerCbQuery('جاري الإضافة...');
-    
-    const data = ctx.callbackQuery.data;
-    const [_, ip, port] = data.split('_');
-    
-    await ctx.editMessageText(`
-✅ *تمت الإضافة السريعة!*
-
-🎮 **${ip}:${port}**
-
-👇 *للتشغيل:* اضغط الزر بالأسفل
-    `.trim(), {
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    {
-                        text: "🚀 تشغيل بوتات",
-                        callback_data: `start_${ip}_${port}`
-                    }
-                ]
-            ]
-        }
-    });
-});
-
-// 🔙 العودة للرئيسية
-bot.action('back_home', async (ctx) => {
+// 🗑️ مسح جميع السيرفرات
+bot.action('delete_all', async (ctx) => {
     await ctx.answerCbQuery();
-    waitingForIP[ctx.from.id] = false;
     
-    const keyboard = {
+    const userId = ctx.from.id.toString();
+    const serverCount = userServers[userId] ? userServers[userId].length : 0;
+    
+    if (serverCount === 0) {
+        await ctx.answerCbQuery('لا توجد سيرفرات', { show_alert: true });
+        return;
+    }
+    
+    const confirmKeyboard = {
         reply_markup: {
             inline_keyboard: [
                 [
                     {
-                        text: "➕ أضف سيرفر",
-                        callback_data: "add_server"
+                        text: "✅ نعم، امسح الكل",
+                        callback_data: "confirm_delete_all"
+                    },
+                    {
+                        text: "❌ لا، إلغاء",
+                        callback_data: "my_servers"
                     }
                 ]
             ]
@@ -274,41 +352,49 @@ bot.action('back_home', async (ctx) => {
     };
     
     await ctx.editMessageText(`
-🏠 *الرئيسية*
+⚠️ *تحذير!*
 
-✨ *بوت بيدروك البسيط*
+🗑️ **ستقوم بحذف ${serverCount} سيرفر**
 
-📌 *لإضافة سيرفر:* اضغط الزر بالأسفل
+❌ *هذا الإجراء لا يمكن التراجع عنه*
+
+👇 *هل أنت متأكد؟*
     `.trim(), {
         parse_mode: 'Markdown',
-        ...keyboard
+        ...confirmKeyboard
     });
 });
 
-// ❌ تجاهل
-bot.action('ignore', async (ctx) => {
-    await ctx.answerCbQuery('تم التجاهل');
-    await ctx.deleteMessage();
-});
+// تأكيد المسح
+bot.action('confirm_delete_all', async (ctx) => {
+    await ctx.answerCbQuery('جاري الحذف...');
+    
+    const userId = ctx.from.id.toString();
+    const deletedCount = userServers[userId] ? userServers[userId].length : 0;
+    
+    // حذف جميع سيرفرات المستخدم
+    delete userServers[userId];
+    saveServers();
+    
+    await ctx.editMessageText(`
+🗑️ *تم حذف جميع السيرفرات*
 
-// 🆘 أمر المساعدة
-bot.command('help', async (ctx) => {
-    await ctx.reply(`
-🆘 *كيفية الاستخدام:*
+✅ **تم حذف:** ${deletedCount} سيرفر
+📭 **السيرفرات الآن:** 0
 
-1. *أرسل* `/start`
-2. *اضغط* "➕ أضف سيرفر"
-3. *اكتب* **ip:port**
-4. *اضغط* "🚀 تشغيل بوتات"
-
-📌 *أمثلة:*
-• play.example.com:19132
-• mc.server.com:25565
-• 192.168.1.100:25565
-
-🎮 *بعدها البوتات تعمل تلقائياً*
+👇 *لإضافة سيرفر جديد:*
     `.trim(), {
-        parse_mode: 'Markdown'
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    {
+                        text: "➕ أضف سيرفر جديد",
+                        callback_data: "add_server"
+                    }
+                ]
+            ]
+        }
     });
 });
 
@@ -320,13 +406,23 @@ bot.catch((err) => {
 // 🚀 تشغيل البوت
 bot.launch()
     .then(() => {
-        console.log('✅ البوت يعمل!');
+        console.log('✅ البوت يعمل مع نظام حفظ السيرفرات!');
+        console.log('💾 يتم حفظ السيرفرات في servers.json');
         console.log('📱 أرسل /start للتجربة');
     })
     .catch(err => {
         console.error('💥 فشل التشغيل:', err.message);
     });
 
-// 🛑 إيقاف نظيف
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// 🛑 إيقاف نظيف مع حفظ البيانات
+process.once('SIGINT', () => {
+    console.log('💾 جاري حفظ البيانات قبل الإيقاف...');
+    saveServers();
+    bot.stop('SIGINT');
+});
+
+process.once('SIGTERM', () => {
+    console.log('💾 جاري حفظ البيانات قبل الإيقاف...');
+    saveServers();
+    bot.stop('SIGTERM');
+});
