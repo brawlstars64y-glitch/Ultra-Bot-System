@@ -2,8 +2,7 @@ const { Telegraf, session, Markup } = require('telegraf');
 const bedrock = require('bedrock-protocol');
 const http = require('http');
 
-// استدامة Railway
-http.createServer((req, res) => res.end("System Online ✅")).listen(process.env.PORT || 3000);
+http.createServer((req, res) => res.end("MaxBlack Online ✅")).listen(process.env.PORT || 3000);
 
 const bot = new Telegraf("8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ");
 bot.use(session());
@@ -22,7 +21,7 @@ const getMenu = (uid) => {
 bot.start(async (ctx) => {
     const uid = ctx.from.id.toString();
     userData[uid] = userData[uid] || { servers: [], botName: "Max_Player", step: null };
-    await ctx.reply(`🎮 نظام ماكس بلاك جاهز\nاسم البوت: ${userData[uid].botName}`, getMenu(uid));
+    await ctx.reply(`🎮 نظام الاقتحام جاهز\nاسم البوت: ${userData[uid].botName}`, getMenu(uid));
 });
 
 bot.action('add', (ctx) => {
@@ -43,8 +42,6 @@ bot.on('text', async (ctx) => {
             user.servers.push({ ip: ip.trim(), port: parseInt(port.trim()) || 19132 });
             user.step = null;
             await ctx.reply("✅ تم حفظ السيرفر", getMenu(uid));
-        } else {
-            await ctx.reply("❌ أرسل التنسيق الصحيح ip:port");
         }
     } else if (user.step === 'name') {
         user.botName = ctx.message.text.trim();
@@ -70,7 +67,7 @@ bot.action(/^manage_(\d+)$/, async (ctx) => {
     
     await ctx.editMessageText(`📍 السيرفر: ${s.ip}\n📊 الحالة: ${status}`, Markup.inlineKeyboard([
         [Markup.button.callback(activeClients[key] ? '🛑 خروج' : '▶️ دخول الآن', `toggle_${idx}`)],
-        [Markup.button.callback('🗑️ حذف', `del_${idx}`), Markup.button.callback('🔙 عودة', 'list')]
+        [Markup.button.callback('🗑️ حذف', `del_${idx}`), Markup.button.callback('🔙', 'list')]
     ]));
 });
 
@@ -92,17 +89,24 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
                 port: s.port,
                 username: userData[uid].botName,
                 offline: true,
-                version: false, // اكتشاف تلقائي للإصدار
-                connectTimeout: 30000
+                // ✅ تغيير الإصدار ليكون متوافقاً مع أحدث تحديثات Bedrock
+                version: '1.21.50', 
+                connectTimeout: 30000,
+                skipPing: false
             });
 
             activeClients[key].on('spawn', () => {
-                ctx.reply(`✅ البوت داخل السيرفر الآن: ${s.ip}`);
+                ctx.reply(`✅ نجح الاقتحام! البوت داخل السيرفر الآن.`);
             });
 
             activeClients[key].on('error', (err) => {
                 delete activeClients[key];
-                ctx.reply(`❌ فشل: ${err.message}`);
+                // إذا ظهر خطأ الإصدار مجدداً، نخبر المستخدم
+                if (err.message.includes('version')) {
+                    ctx.reply(`❌ السيرفر يستخدم إصداراً مختلفاً عن البوت.`);
+                } else {
+                    ctx.reply(`❌ فشل: ${err.message}`);
+                }
             });
 
         } catch (e) { ctx.reply("❌ خطأ في المحرك"); }
