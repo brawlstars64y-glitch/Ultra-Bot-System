@@ -1,165 +1,171 @@
-const { Telegraf } = require('telegraf');
-const fs = require('fs');
+const { Telegraf, session, Markup } = require('telegraf');
+const bedrock = require('bedrock-protocol');
+const http = require('http');
 
-const TOKEN = process.env.TELEGRAM_TOKEN || "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
+// نظام الاستدامة لـ Railway
+http.createServer((req, res) => res.end('MaxBlack Bot is Online ✅')).listen(process.env.PORT || 3000);
+
+const TOKEN = "8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ";
 const bot = new Telegraf(TOKEN);
 
-// تخزين في الذاكرة فقط
+// تفعيل الجلسات لحل مشاكل إدخال البيانات
+bot.use(session());
+
+// تخزين العملاء النشطين (البوتات داخل السيرفرات)
+let activeClients = {};
+
+// 🏁 قائمة التحكم الرئيسية
+const mainMenu = (userId) => {
+    const serverCount = data[userId]?.servers?.length || 0;
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('➕ إضافة سيرفر', 'add'), Markup.button.callback(`📂 السيرفرات (${serverCount})`, 'list')],
+        [Markup.button.callback('✏️ تغيير اسم البوت', 'change_name')],
+        [Markup.button.url('👤 المبرمج', 'https://t.me/uuuaaw')]
+    ]);
+};
+
 let data = {};
 
-// 🏁 البدء
 bot.start(async (ctx) => {
     const userId = ctx.from.id.toString();
-    
     if (!data[userId]) {
-        data[userId] = {
-            servers: [],
-            botName: "Player"
-        };
+        data[userId] = { servers: [], botName: "MaxBlack_Bot", step: null };
     }
-    
-    const menu = {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "➕ Add Server", callback_data: "add" },
-                    { text: `📂 Servers (${data[userId].servers.length})`, callback_data: "list" }
-                ],
-                [
-                    { text: "✏️ Change Bot Name", callback_data: "name" }
-                ]
-            ]
-        }
-    };
-    
-    await ctx.reply(`🎮 Welcome ${ctx.from.first_name}!\n\nServers: ${data[userId].servers.length}\nBot Name: ${data[userId].botName}`, menu);
+    await ctx.reply(`🎮 أهلاً بك يا ${ctx.from.first_name} في بوت حماية السيرفرات!\n\nاسم البوت الحالي: ${data[userId].botName}`, mainMenu(userId));
 });
 
-// ➕ إضافة
+// ➕ إضافة سيرفر
 bot.action('add', async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText("📝 Send server IP:port\nExample: play.example.com:19132");
-    
     const userId = ctx.from.id.toString();
-    
-    // استقبال IP مرة واحدة
-    bot.once('text', async (nextCtx) => {
-        if (nextCtx.from.id.toString() === userId) {
-            const text = nextCtx.message.text.trim();
-            
-            if (text.includes(':') && text.split(':').length === 2) {
-                const [ip, port] = text.split(':');
-                
-                if (!data[userId].servers) {
-                    data[userId].servers = [];
-                }
-                
-                data[userId].servers.push({
-                    id: Date.now(),
-                    ip: ip,
-                    port: port,
-                    name: `Server ${data[userId].servers.length + 1}`
-                });
-                
-                await nextCtx.reply(`✅ Added!\n${ip}:${port}\n\nTotal: ${data[userId].servers.length} servers`, {
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                { text: "📂 View All", callback_data: "list" },
-                                { text: "➕ Add More", callback_data: "add" }
-                            ]
-                        ]
-                    }
-                });
-            } else {
-                await nextCtx.reply("❌ Wrong format!\nUse: ip:port");
-            }
-        }
-    });
-});
-
-// 📂 القائمة
-bot.action('list', async (ctx) => {
+    data[userId].step = 'waiting_ip';
     await ctx.answerCbQuery();
-    
-    const userId = ctx.from.id.toString();
-    const servers = data[userId]?.servers || [];
-    
-    if (servers.length === 0) {
-        await ctx.editMessageText("📭 No servers found.\nPress ➕ to add first server.", {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "➕ Add Server", callback_data: "add" }
-                    ]
-                ]
-            }
-        });
-        return;
-    }
-    
-    let message = `📂 Your Servers (${servers.length}):\n\n`;
-    
-    servers.forEach((server, index) => {
-        message += `${index + 1}. ${server.ip}:${server.port}\n`;
-    });
-    
-    const buttons = servers.map(server => [
-        { text: `🎮 ${server.name}`, callback_data: `server_${server.id}` }
-    ]);
-    
-    buttons.push([
-        { text: "➕ Add New", callback_data: "add" },
-        { text: "🏠 Home", callback_data: "home" }
-    ]);
-    
-    await ctx.editMessageText(message, {
-        reply_markup: { inline_keyboard: buttons }
-    });
+    await ctx.editMessageText("📝 أرسل IP السيرفر والبورت بهذا الشكل:\n\n `play.example.com:19132`", { parse_mode: 'Markdown' });
 });
 
 // ✏️ تغيير الاسم
-bot.action('name', async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText("✏️ Send new bot name:");
-    
+bot.action('change_name', async (ctx) => {
     const userId = ctx.from.id.toString();
-    
-    bot.once('text', async (nextCtx) => {
-        if (nextCtx.from.id.toString() === userId) {
-            const newName = nextCtx.message.text.trim();
-            
-            if (newName.length > 0 && newName.length < 20) {
-                data[userId].botName = newName;
-                
-                await nextCtx.reply(`✅ Bot name changed to: ${newName}`, {
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                { text: "🏠 Home", callback_data: "home" }
-                            ]
-                        ]
-                    }
-                });
-            } else {
-                await nextCtx.reply("❌ Name must be 1-20 characters");
-            }
-        }
-    });
+    data[userId].step = 'waiting_name';
+    await ctx.answerCbQuery();
+    await ctx.reply("✏️ أرسل اسم البوت الجديد (بدون مسافات):");
 });
 
-// 🏠 الرئيسية
-bot.action('home', async (ctx) => {
+// 📂 عرض السيرفرات
+bot.action('list', async (ctx) => {
+    const userId = ctx.from.id.toString();
+    const servers = data[userId]?.servers || [];
     await ctx.answerCbQuery();
-    ctx.callbackQuery.data = null;
+
+    if (servers.length === 0) {
+        return ctx.editMessageText("📭 لا توجد سيرفرات مضافة حالياً.", mainMenu(userId));
+    }
+
+    let msg = "📂 قائمة سيرفراتك:\n";
+    const buttons = servers.map((s, i) => [Markup.button.callback(`🌍 ${s.ip}:${s.port}`, `manage_${i}`)]);
+    buttons.push([Markup.button.callback('🏠 القائمة الرئيسية', 'home')]);
+
+    await ctx.editMessageText(msg, Markup.inlineKeyboard(buttons));
+});
+
+// ⚙️ إدارة سيرفر محدد
+bot.action(/^manage_(\d+)$/, async (ctx) => {
+    const userId = ctx.from.id.toString();
+    const index = ctx.match[1];
+    const server = data[userId].servers[index];
+    const isRunning = activeClients[`${userId}_${index}`] ? "متصل ✅" : "مفصول 🔴";
+
+    await ctx.editMessageText(`🛠️ إدارة السيرفر: ${server.ip}\n📊 الحالة: ${isRunning}`, Markup.inlineKeyboard([
+        [Markup.button.callback(activeClients[`${userId}_${index}`] ? '🛑 إيقاف' : '⚡ تشغيل الاقتحام', `toggle_${index}`)],
+        [Markup.button.callback('🗑️ حذف السيرفر', `delete_${index}`)],
+        [Markup.button.callback('🔙 عودة', 'list')]
+    ]));
+});
+
+// 🔥 محرك التشغيل والإيقاف (يدعم جميع الإصدارات)
+bot.action(/^toggle_(\d+)$/, async (ctx) => {
+    const userId = ctx.from.id.toString();
+    const index = ctx.match[1];
+    const server = data[userId].servers[index];
+    const key = `${userId}_${index}`;
+
+    if (activeClients[key]) {
+        activeClients[key].close();
+        delete activeClients[key];
+        await ctx.answerCbQuery("🛑 تم إيقاف البوت");
+    } else {
+        await ctx.answerCbQuery("⏳ جاري الدخول...");
+        try {
+            activeClients[key] = bedrock.createClient({
+                host: server.ip,
+                port: parseInt(server.port),
+                username: data[userId].botName,
+                offline: true,
+                version: false, // اكتشاف تلقائي لجميع الإصدارات
+                skipPing: false
+            });
+
+            activeClients[key].on('spawn', () => {
+                ctx.reply(`✅ البوت دخل السيرفر الآن: ${server.ip}`);
+            });
+
+            activeClients[key].on('error', (err) => {
+                delete activeClients[key];
+                ctx.reply(`❌ خطأ: ${err.message}`);
+            });
+        } catch (e) {
+            ctx.reply("❌ فشل المحرك في الاتصال.");
+        }
+    }
+    // تحديث الواجهة
+    ctx.deleteMessage();
     bot.start(ctx);
 });
 
-// 🚀 تشغيل
-bot.launch()
-    .then(() => console.log('✅ Bot is working!'))
+// 🗑️ حذف سيرفر
+bot.action(/^delete_(\d+)$/, async (ctx) => {
+    const userId = ctx.from.id.toString();
+    const index = ctx.match[1];
+    data[userId].servers.splice(index, 1);
+    await ctx.answerCbQuery("🗑️ تم الحذف");
+    ctx.deleteMessage();
+    bot.start(ctx);
+});
+
+// 🏠 العودة للرئيسية
+bot.action('home', (ctx) => {
+    ctx.answerCbQuery();
+    ctx.deleteMessage();
+    bot.start(ctx);
+});
+
+// ✉️ معالجة النصوص المرسلة (IP أو اسم)
+bot.on('text', async (ctx) => {
+    const userId = ctx.from.id.toString();
+    const step = data[userId]?.step;
+
+    if (step === 'waiting_ip') {
+        const text = ctx.message.text.trim();
+        if (text.includes(':')) {
+            const [ip, port] = text.split(':');
+            data[userId].servers.push({ ip, port, id: Date.now() });
+            data[userId].step = null;
+            await ctx.reply("✅ تم إضافة السيرفر بنجاح!", mainMenu(userId));
+        } else {
+            await ctx.reply("❌ تنسيق خاطئ! أرسل الـ IP والبورت هكذا `ip:port`", { parse_mode: 'Markdown' });
+        }
+    } 
+    else if (step === 'waiting_name') {
+        data[userId].botName = ctx.message.text.trim();
+        data[userId].step = null;
+        await ctx.reply(`✅ تم تغيير اسم البوت إلى: ${data[userId].botName}`, mainMenu(userId));
+    }
+});
+
+// تشغيل
+bot.launch({ dropPendingUpdates: true })
+    .then(() => console.log('🚀 MaxBlack Bot is Ready!'))
     .catch(err => console.log('❌ Error:', err.message));
 
-// إيقاف
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// درع الحماية من الانهيار
+process.on('uncaughtException', e => console.log('Critical Error:', e));
+process.on('unhandledRejection', e => console.log('Critical Error:', e));
