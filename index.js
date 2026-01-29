@@ -1,29 +1,73 @@
 const { Telegraf, Markup } = require('telegraf')
 const http = require('http')
 
-http.createServer((req, res) => res.end('OK')).listen(3000)
+// ====== Keep Alive (Railway) ======
+http.createServer((req, res) => {
+  res.end('OK')
+}).listen(process.env.PORT || 3000)
 
-const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
+// ====== BOT ======
+const TOKEN = '8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ'
+const bot = new Telegraf(TOKEN)
 
-bot.start(ctx => {
-  ctx.reply(
-    '✅ البوت شغال',
-    Markup.inlineKeyboard([
-      [Markup.button.callback('🔘 زر اختبار', 'test')]
-    ])
+// تخزين مؤقت (RAM)
+const servers = {}
+
+// ====== START / MAIN MENU ======
+async function mainMenu(ctx) {
+  await ctx.reply(
+    '🎮 *لوحة التحكم*\nاختر خيار:',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('➕ إضافة سيرفر', 'add_server')],
+        [Markup.button.callback('📂 سيرفراتي', 'my_servers')]
+      ])
+    }
   )
+}
+
+bot.start(async ctx => {
+  await mainMenu(ctx)
 })
 
-bot.action('test', ctx => {
-  ctx.answerCbQuery('اشتغل الزر ✅')
-  ctx.reply('🎉 الزر يشتغل بدون تعليق')
+// ====== ADD SERVER ======
+bot.action('add_server', async ctx => {
+  await ctx.answerCbQuery()
+  servers[ctx.from.id] = servers[ctx.from.id] || []
+  servers[ctx.from.id].push(`سيرفر #${servers[ctx.from.id].length + 1}`)
+  await ctx.reply('✅ تم إضافة سيرفر (تجريبي)')
 })
 
+// ====== MY SERVERS ======
+bot.action('my_servers', async ctx => {
+  await ctx.answerCbQuery()
+  const list = servers[ctx.from.id]
+
+  if (!list || list.length === 0) {
+    return ctx.reply('📭 لا يوجد لديك سيرفرات')
+  }
+
+  let text = '📂 *سيرفراتك:*\n'
+  list.forEach((s, i) => {
+    text += `${i + 1}- ${s}\n`
+  })
+
+  await ctx.reply(text, { parse_mode: 'Markdown' })
+})
+
+// ====== FALLBACK ======
+bot.on('text', ctx => {
+  ctx.reply('ℹ️ استخدم /start')
+})
+
+// ====== SAFE LAUNCH ======
 ;(async () => {
   await bot.telegram.deleteWebhook()
-  bot.launch()
-  console.log('BOT READY')
+  bot.launch({ dropPendingUpdates: true })
+  console.log('✅ BOT READY')
 })()
 
-process.on('uncaughtException', e => console.log(e))
-process.on('unhandledRejection', e => console.log(e))
+// ====== ANTI CRASH ======
+process.on('uncaughtException', e => console.error(e))
+process.on('unhandledRejection', e => console.error(e))
