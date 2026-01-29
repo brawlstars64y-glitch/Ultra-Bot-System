@@ -1,14 +1,14 @@
 {
   "name": "maxblack-bot",
   "version": "1.0.0",
-  "description": "Minecraft Bedrock Bot with Telegram Control",
+  "description": "Minecraft Bedrock Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "telegraf": "^4.16.3",
-    "bedrock-protocol": "^4.10.0"
+    "bedrock-protocol": "latest"
   },
   "engines": {
     "node": ">=18.0.0"
