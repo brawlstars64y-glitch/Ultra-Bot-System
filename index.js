@@ -2,7 +2,8 @@ const { Telegraf, session, Markup } = require('telegraf');
 const bedrock = require('bedrock-protocol');
 const http = require('http');
 
-http.createServer((req, res) => res.end("MaxBlack Online ✅")).listen(process.env.PORT || 3000);
+// استدامة العمل على Railway
+http.createServer((req, res) => res.end("MaxBlack 1.21.130 Ready ✅")).listen(process.env.PORT || 3000);
 
 const bot = new Telegraf("8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ");
 bot.use(session());
@@ -21,13 +22,13 @@ const getMenu = (uid) => {
 bot.start(async (ctx) => {
     const uid = ctx.from.id.toString();
     userData[uid] = userData[uid] || { servers: [], botName: "Max_Player", step: null };
-    await ctx.reply(`🎮 نظام الاقتحام جاهز\nاسم البوت: ${userData[uid].botName}`, getMenu(uid));
+    await ctx.reply(`🎮 نظام الاقتحام (إصدارات 1.21.130)\nاسم البوت: ${userData[uid].botName}`, getMenu(uid));
 });
 
 bot.action('add', (ctx) => {
     userData[ctx.from.id].step = 'get_ip';
     ctx.answerCbQuery();
-    ctx.reply("📝 أرسل الـ IP والبورت (مثال play.atarnos.me:12345):");
+    ctx.reply("📝 أرسل الـ IP وبورت السيرفر (ip:port):");
 });
 
 bot.on('text', async (ctx) => {
@@ -41,7 +42,7 @@ bot.on('text', async (ctx) => {
             const [ip, port] = input.split(':');
             user.servers.push({ ip: ip.trim(), port: parseInt(port.trim()) || 19132 });
             user.step = null;
-            await ctx.reply("✅ تم حفظ السيرفر", getMenu(uid));
+            await ctx.reply("✅ تم حفظ السيرفر بنجاح", getMenu(uid));
         }
     } else if (user.step === 'name') {
         user.botName = ctx.message.text.trim();
@@ -65,12 +66,13 @@ bot.action(/^manage_(\d+)$/, async (ctx) => {
     const key = `${ctx.from.id}_${idx}`;
     const status = activeClients[key] ? "متصل ✅" : "مفصول 🔴";
     
-    await ctx.editMessageText(`📍 السيرفر: ${s.ip}\n📊 الحالة: ${status}`, Markup.inlineKeyboard([
-        [Markup.button.callback(activeClients[key] ? '🛑 خروج' : '▶️ دخول الآن', `toggle_${idx}`)],
-        [Markup.button.callback('🗑️ حذف', `del_${idx}`), Markup.button.callback('🔙', 'list')]
+    await ctx.editMessageText(`📍 سيرفر: ${s.ip}\n📊 الحالة: ${status}`, Markup.inlineKeyboard([
+        [Markup.button.callback(activeClients[key] ? '🛑 خروج' : '▶️ دخول (1.21.130)', `toggle_${idx}`)],
+        [Markup.button.callback('🗑️ حذف', `del_${idx}`), Markup.button.callback('🔙 عودة', 'list')]
     ]));
 });
 
+// 🔥 محرك الدخول المحدث لدعم 1.21.130 / 1.21.132
 bot.action(/^toggle_(\d+)$/, async (ctx) => {
     const uid = ctx.from.id;
     const idx = ctx.match[1];
@@ -82,34 +84,30 @@ bot.action(/^toggle_(\d+)$/, async (ctx) => {
         delete activeClients[key];
         ctx.answerCbQuery("🔴 تم الفصل");
     } else {
-        await ctx.answerCbQuery("⏳ جاري محاولة الدخول...");
+        await ctx.answerCbQuery("⏳ جاري محاولة الاقتحام...");
         try {
             activeClients[key] = bedrock.createClient({
                 host: s.ip,
                 port: s.port,
                 username: userData[uid].botName,
                 offline: true,
-                // ✅ تغيير الإصدار ليكون متوافقاً مع أحدث تحديثات Bedrock
-                version: '1.21.50', 
-                connectTimeout: 30000,
+                // ✅ تحديد النسخة المطلوبة بدقة
+                version: '1.21.130', 
+                connectTimeout: 40000,
                 skipPing: false
             });
 
             activeClients[key].on('spawn', () => {
-                ctx.reply(`✅ نجح الاقتحام! البوت داخل السيرفر الآن.`);
+                ctx.reply(`🚀 كفو! البوت دخل السيرفر بنجاح (إصدار 1.21.130)`);
             });
 
             activeClients[key].on('error', (err) => {
                 delete activeClients[key];
-                // إذا ظهر خطأ الإصدار مجدداً، نخبر المستخدم
-                if (err.message.includes('version')) {
-                    ctx.reply(`❌ السيرفر يستخدم إصداراً مختلفاً عن البوت.`);
-                } else {
-                    ctx.reply(`❌ فشل: ${err.message}`);
-                }
+                ctx.reply(`❌ فشل الدخول: ${err.message}`);
+                console.log('Error Log:', err);
             });
 
-        } catch (e) { ctx.reply("❌ خطأ في المحرك"); }
+        } catch (e) { ctx.reply("❌ عطل فني في المحرك"); }
     }
     bot.start(ctx);
 });
@@ -119,11 +117,11 @@ bot.action('status', async (ctx) => {
     let live = 0;
     for (let k in activeClients) if (k.startsWith(uid)) live++;
     ctx.answerCbQuery();
-    await ctx.reply(`📊 تقريرك:\n- السيرفرات: ${userData[uid]?.servers?.length || 0}\n- المتصلة الآن: ${live}`);
+    await ctx.reply(`📊 تقرير الحالة:\n- السيرفرات المضافة: ${userData[uid]?.servers?.length || 0}\n- النشطة حالياً: ${live}`);
 });
 
 bot.action('home', (ctx) => bot.start(ctx));
-bot.action('name', (ctx) => { userData[ctx.from.id].step = 'name'; ctx.answerCbQuery(); ctx.reply("أرسل الاسم الجديد:"); });
+bot.action('name', (ctx) => { userData[ctx.from.id].step = 'name'; ctx.answerCbQuery(); ctx.reply("أرسل اسم البوت الجديد:"); });
 bot.action(/^del_(\d+)$/, (ctx) => { userData[ctx.from.id].servers.splice(ctx.match[1], 1); bot.start(ctx); });
 
 bot.launch({ dropPendingUpdates: true });
