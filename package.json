@@ -1,13 +1,10 @@
 {
-  "name": "telegram-bedrock-bot",
-  "version": "1.0.0",
-  "main": "index.js",
-  "type": "commonjs",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "dependencies": {
-    "telegraf": "^4.16.2",
-    "bedrock-protocol": "^3.44.0"
+  "name":"tg-bedrock-bot",
+  "version":"1.0.0",
+  "main":"index.js",
+  "scripts":{"start":"node index.js"},
+  "dependencies":{
+    "telegraf":"^4.16.2",
+    "bedrock-protocol":"^3.44.0"
   }
 }
