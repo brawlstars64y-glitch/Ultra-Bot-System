@@ -93,7 +93,7 @@ bot.on('text', async (ctx) => {
 
   const [host, port] = text.split(':')
   servers[uid] = servers[uid] || []
-  servers[uid].push({ host, port: port.trim() })
+  servers[uid].push({ host: host.trim(), port: port.trim() })
 
   delete waitIP[uid]
   ctx.reply('✅ تم حفظ السيرفر بنجاح!', mainMenu())
@@ -117,7 +117,7 @@ bot.action('LIST', async (ctx) => {
   ctx.reply('📂 اختر السيرفر المطلوب:', Markup.inlineKeyboard(buttons))
 })
 
-// ===== SERVER MENU (تم إضافة زر الحذف هنا) =====
+// ===== SERVER MENU =====
 bot.action(/^SRV_(\d+)$/, async (ctx) => {
   if (!(await checkSubscription(ctx))) return
   ctx.answerCbQuery()
@@ -135,7 +135,7 @@ bot.action(/^SRV_(\d+)$/, async (ctx) => {
   )
 })
 
-// ===== DELETE ACTION (وظيفة الحذف) =====
+// ===== DELETE ACTION =====
 bot.action(/^DELETE_(\d+)$/, async (ctx) => {
   const uid = ctx.from.id
   const id = parseInt(ctx.match[1])
@@ -146,7 +146,7 @@ bot.action(/^DELETE_(\d+)$/, async (ctx) => {
   }
 })
 
-// ===== TOGGLE BOT PLAYER =====
+// ===== TOGGLE BOT PLAYER (تعديل دعم الإصدارات) =====
 bot.action(/^TOGGLE_(\d+)$/, async (ctx) => {
   if (!(await checkSubscription(ctx))) return
   ctx.answerCbQuery()
@@ -159,21 +159,22 @@ bot.action(/^TOGGLE_(\d+)$/, async (ctx) => {
     return ctx.reply('⏹ تم سحب البوت من السيرفر.')
   }
 
-  ctx.reply('⏳ جاري الدخول (إصدار 1.21.130)...')
+  ctx.reply('⏳ جاري محاولة الدخول (دعم إصدارات 1.20 - 1.21.132)...')
   try {
     const client = bedrock.createClient({
       host: s.host,
       port: parseInt(s.port),
       username: 'Max_Black_Bot',
       offline: true,
-      version: '1.21.130'
+      // قمت بإزالة تحديد الإصدار الثابت ليعمل النظام على اكتشاف الإصدار تلقائياً
     })
 
     clients[uid] = client
     client.on('spawn', () => ctx.reply('✅ دخل البوت السيرفر بنجاح!'))
     client.on('error', (err) => {
+      console.error(err)
       delete clients[uid]
-      ctx.reply('❌ حدث خطأ أو السيرفر مغلق.')
+      ctx.reply('❌ فشل الاتصال: تأكد من عنوان السيرفر أو أن إصداره مدعوم.')
     })
   } catch (e) {
     ctx.reply('❌ فشل تشغيل الاتصال.')
@@ -191,4 +192,4 @@ process.on('uncaughtException', console.error)
 process.on('unhandledRejection', console.error)
 
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ BOT UPDATED AND READY')
+console.log('✅ BOT IS READY (MULTI-VERSION SUPPORT)')
