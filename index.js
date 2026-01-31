@@ -2,12 +2,7 @@ const { Telegraf, Markup } = require('telegraf')
 const bedrock = require('bedrock-protocol')
 const http = require('http')
 
-// منفذ Railway الإجباري لضمان الحالة الخضراء
-const PORT = process.env.PORT || 8080
-http.createServer((req, res) => {
-  res.writeHead(200)
-  res.end('MAX BLACK BOT IS ONLINE')
-}).listen(PORT)
+http.createServer((req, res) => res.end('OK')).listen(process.env.PORT || 8080)
 
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 const CHANNELS = ['@aternosbot24', '@N_NHGER', '@sjxhhdbx72', '@vsyfyk']
@@ -24,81 +19,60 @@ async function checkSub(ctx) {
   return true
 }
 
-const menu = () => Markup.inlineKeyboard([
-  [Markup.button.callback('➕ إضافة سيرفر جديد', 'ADD')],
-  [Markup.button.callback('📂 قائمة سيرفراتي', 'LIST')]
-])
+const menu = () => Markup.inlineKeyboard([[Markup.button.callback('➕ إضافة سيرفر', 'ADD')], [Markup.button.callback('📂 سيرفراتي', 'LIST')]])
 
 bot.start(async ctx => {
   if (!(await checkSub(ctx))) return ctx.reply('⚠️ اشترك بالقنوات أولاً:\n' + CHANNELS.join('\n'), Markup.inlineKeyboard([[Markup.button.callback('✅ تم الاشتراك', 'CHECK')]]))
-  ctx.reply('🎮 أهلاً بك في لوحة التحكم، اختر خياراً:', menu())
+  ctx.reply('🎮 أهلاً بك، اختر خياراً:', menu())
 })
 
 bot.action('CHECK', async ctx => {
-  if (await checkSub(ctx)) ctx.editMessageText('✅ تم التفعيل بنجاح!', menu())
-  else ctx.answerCbQuery('❌ اشترك أولاً في جميع القنوات!', { show_alert: true })
+  if (await checkSub(ctx)) ctx.editMessageText('✅ تم التفعيل', menu())
+  else ctx.answerCbQuery('❌ اشترك أولاً', { show_alert: true })
 })
 
-bot.action('ADD', ctx => {
-  waitIP[ctx.from.id] = true
-  ctx.reply('📡 أرسل عنوان السيرفر والمنفذ (ip:port)')
-})
+bot.action('ADD', ctx => { waitIP[ctx.from.id] = true; ctx.reply('📡 أرسل ip:port') })
 
 bot.on('text', ctx => {
-  const uid = ctx.from.id
-  if (!waitIP[uid]) return
-  if (!ctx.message.text.includes(':')) return ctx.reply('❌ الصيغة خاطئة، أرسل ip:port')
+  const uid = ctx.from.id; if (!waitIP[uid]) return
+  if (!ctx.message.text.includes(':')) return ctx.reply('❌ الصيغة غلط')
   const [h, p] = ctx.message.text.split(':')
-  servers[uid] = servers[uid] || []
-  servers[uid].push({ host: h.trim(), port: p.trim() })
-  delete waitIP[uid]
-  ctx.reply('✅ تم حفظ السيرفر بنجاح!', menu())
+  servers[uid] = servers[uid] || []; servers[uid].push({ host: h.trim(), port: p.trim() })
+  delete waitIP[uid]; ctx.reply('✅ تم الحفظ', menu())
 })
 
 bot.action('LIST', ctx => {
   const list = servers[ctx.from.id]
-  if (!list || list.length === 0) return ctx.reply('📭 قائمة سيرفراتك فارغة حالياً.', menu())
+  if (!list || list.length === 0) return ctx.reply('📭 فارغة', menu())
   const btns = list.map((s, i) => [Markup.button.callback(`📍 ${s.host}:${s.port}`, `SRV_${i}`)])
-  btns.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
-  ctx.reply('📂 اختر السيرفر المطلوب:', Markup.inlineKeyboard(btns))
+  btns.push([Markup.button.callback('⬅️ رجوع', 'BACK')]); ctx.reply('📂 اختر سيرفرك:', Markup.inlineKeyboard(btns))
 })
 
 bot.action(/^SRV_(\d+)$/, ctx => {
   const id = ctx.match[1]; const s = servers[ctx.from.id][id]; const active = clients[ctx.from.id]
   ctx.reply(`🖥 السيرفر: ${s.host}:${s.port}\nالحالة: ${active ? '🟢 متصل' : '🔴 متوقف'}`,
     Markup.inlineKeyboard([
-      [Markup.button.callback(active ? '⏹ إيقاف البوت' : '▶️ تشغيل البوت', `TOGGLE_${id}`)],
-      [Markup.button.callback('🗑 حذف السيرفر', `DEL_${id}`)],
+      [Markup.button.callback(active ? '⏹ إيقاف' : '▶️ تشغيل', `TOGGLE_${id}`)],
+      [Markup.button.callback('🗑 حذف', `DEL_${id}`)],
       [Markup.button.callback('⬅️ رجوع', 'LIST')]
     ]))
 })
 
-// ميزة الحذف (التي طلبتِها)
 bot.action(/^DEL_(\d+)$/, ctx => {
-  const uid = ctx.from.id; const id = parseInt(ctx.match[1])
-  if (servers[uid]) {
-    servers[uid].splice(id, 1)
-    ctx.answerCbQuery('✅ تم الحذف')
-    ctx.reply('🗑 تم حذف السيرفر بنجاح من قائمتك.', menu())
-  }
+  const uid = ctx.from.id; servers[uid].splice(parseInt(ctx.match[1]), 1)
+  ctx.answerCbQuery('✅ تم الحذف'); ctx.reply('🗑 تم الحذف', menu())
 })
 
 bot.action(/^TOGGLE_(\d+)$/, ctx => {
   const uid = ctx.from.id; const s = servers[uid][ctx.match[1]]
-  if (clients[uid]) { clients[uid].close(); delete clients[uid]; return ctx.reply('⏹ تم سحب البوت من السيرفر.') }
-
-  ctx.reply('⏳ جاري محاولة الدخول (1.20 - 1.21.132)...')
+  if (clients[uid]) { clients[uid].close(); delete clients[uid]; return ctx.reply('⏹ تم السحب') }
+  ctx.reply('⏳ جاري الدخول...')
   try {
-    const c = bedrock.createClient({ host: s.host, port: parseInt(s.port), username: 'Max_Bot', offline: true })
+    const c = bedrock.createClient({ host: s.host, port: parseInt(s.port), username: 'MaxBot', offline: true })
     clients[uid] = c
-    c.on('spawn', () => ctx.reply('✅ دخل البوت السيرفر بنجاح!'))
-    c.on('error', (err) => { delete clients[uid]; ctx.reply('❌ فشل الاتصال، تأكد من بيانات السيرفر.') })
-  } catch { ctx.reply('❌ حدث خطأ تقني في تشغيل البوت.') }
+    c.on('spawn', () => ctx.reply('✅ دخل البوت!'))
+    c.on('error', () => { delete clients[uid]; ctx.reply('❌ فشل الاتصال') })
+  } catch { ctx.reply('❌ خطأ تقني') }
 })
 
-bot.action('BACK', ctx => ctx.editMessageText('🎮 لوحة التحكم:', menu()))
-
-bot.launch().then(() => console.log('✅ BOT STARTED SUCCESSFULLY'))
-
-process.on('uncaughtException', console.error)
-process.on('unhandledRejection', console.error)
+bot.launch().then(() => console.log('ONLINE'))
