@@ -3,9 +3,10 @@ const bedrock = require('bedrock-protocol')
 const http = require('http')
 const fs = require('fs')
 
+// توكن البوت الخاص بكِ
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
-// --- نظام حفظ البيانات ---
+// --- إدارة البيانات (قاعدة بيانات بسيطة) ---
 let servers = {}
 if (fs.existsSync('servers.json')) {
     try { servers = JSON.parse(fs.readFileSync('servers.json')) } catch (e) { servers = {} }
@@ -19,12 +20,13 @@ const CHANNELS = [
   { name: 'القناة 4', user: '@vsyfyk', url: 'https://t.me/vsyfyk' }
 ]
 
-const clients = {}; const waitIP = {}
+const clients = {}; 
+const waitIP = {};
 
-// Keep Alive لمنع التوقف على Railway
-http.createServer((req, res) => res.end('MAX BLACK SYSTEM ACTIVE')).listen(process.env.PORT || 8080)
+// Keep Alive لضمان استمرار العمل على Railway
+http.createServer((req, res) => res.end('MAX BLACK IS ALIVE')).listen(process.env.PORT || 8080)
 
-// فحص الاشتراك
+// --- فحص الاشتراك ---
 async function checkSub(ctx) {
   for (const ch of CHANNELS) {
     try {
@@ -35,121 +37,98 @@ async function checkSub(ctx) {
   return true
 }
 
+// --- القائمة الرئيسية ---
 const mainMenu = () => Markup.inlineKeyboard([
   [Markup.button.callback('➕ إضافة سيرفر جديد', 'ADD')],
   [Markup.button.callback('📂 قائمة سيرفراتي', 'LIST')]
 ])
 
-// دالة تحديث واجهة التليجرام (الحالة والأزرار)
-function updateServerUI(ctx, host, port, active, id) {
+// --- تحديث واجهة السيرفر (الحالة والأزرار) ---
+async function updateUI(ctx, host, port, active, id) {
   const text = `🖥 السيرفر: ${host}:${port}\nالحالة: ${active ? '🟢 شغال' : '🔴 مطفأ'}`
-  const keyboard = Markup.inlineKeyboard([
+  const kb = Markup.inlineKeyboard([
     [Markup.button.callback(active ? '⏹ اطفاء البوت' : '▶️ تشغيل البوت', `TOGGLE_${id}`)],
     [Markup.button.callback('🗑 حذف السيرفر', `DELETE_${id}`)],
     [Markup.button.callback('⬅️ رجوع', 'LIST')]
   ])
-  return ctx.editMessageText(text, keyboard).catch(() => {})
+  try { await ctx.editMessageText(text, kb) } catch (e) {}
 }
 
-// --- 1. معالج النصوص (حل مشكلة عدم الرد) ---
+// --- معالج الرسائل النصية (إضافة السيرفر) ---
 bot.on('text', async (ctx) => {
   const uid = ctx.from.id
   if (waitIP[uid]) {
     const text = ctx.message.text.trim()
-    if (!text.includes(':')) return ctx.reply('❌ الصيغة غلط! أرسل ip:port')
+    if (!text.includes(':')) return ctx.reply('❌ ارسل ip:port')
     
     const [h, p] = text.split(':')
     servers[uid] = servers[uid] || []
     servers[uid].push({ host: h.trim(), port: p.trim() })
     saveDB()
     delete waitIP[uid]
-    return ctx.reply(`✅ تم حفظ السيرفر بنجاح!`, mainMenu())
+    return ctx.reply('✅ تم حفظ السيرفر بنجاح!', mainMenu())
+  }
+  if (ctx.message.text === '/start') {
+     if (!(await checkSub(ctx))) {
+        const btns = CHANNELS.map(ch => [Markup.button.url(ch.name, ch.url)])
+        btns.push([Markup.button.callback('✅ تم الاشتراك', 'CHECK_SUB')])
+        return ctx.reply('⚠️ اشترك أولاً:', Markup.inlineKeyboard(btns))
+     }
+     ctx.reply('🎮 أهلاً بك يا بطل:', mainMenu())
   }
 })
 
-// --- 2. الأوامر الأساسية ---
-bot.start(async ctx => {
-  if (!(await checkSub(ctx))) {
-    const btns = CHANNELS.map(ch => [Markup.button.url(ch.name, ch.url)])
-    btns.push([Markup.button.callback('✅ تم الاشتراك في الكل', 'CHECK_SUB')])
-    return ctx.reply('⚠️ اشترك أولاً لفتح اللوحة:', Markup.inlineKeyboard(btns))
-  }
-  ctx.reply('🎮 أهلاً بك يا بطل، اختر خياراً:', mainMenu())
-})
-
-bot.action('LIST', ctx => {
-  const list = servers[ctx.from.id]
-  if (!list || list.length === 0) return ctx.reply('📭 القائمة فارغة.', mainMenu())
-  const btns = list.map((s, i) => [Markup.button.callback(`📍 ${s.host}:${s.port}`, `SRV_${i}`)])
-  btns.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
-  ctx.editMessageText('📂 اختر السيرفر:', Markup.inlineKeyboard(btns))
-})
-
-bot.action(/^SRV_(\d+)$/, ctx => {
-  const id = ctx.match[1]; const s = servers[ctx.from.id][id]; const active = clients[ctx.from.id]
-  updateServerUI(ctx, s.host, s.port, !!active, id)
-})
-
-// --- 3. تشغيل البوت مع دعم جميع الإصدارات ---
-bot.action(/^TOGGLE_(\d+)$/, async ctx => {
-  const id = ctx.match[1]; const uid = ctx.from.id; const s = servers[uid][id]
-  
-  if (clients[uid]) { 
-    clients[uid].close(); delete clients[uid]
-    return updateServerUI(ctx, s.host, s.port, false, id)
-  }
-
-  ctx.answerCbQuery('⏳ جاري فحص الإصدار والدخول...')
-  
-  try {
-    const client = bedrock.createClient({
-      host: s.host,
-      port: parseInt(s.port),
-      username: 'Max_Black',
-      offline: true,
-      version: undefined, // "undefined" تعني اكتشاف الإصدار تلقائياً (1.8 إلى 1.21.132)
-      connectTimeout: 15000
-    })
-
-    clients[uid] = client
-
-    client.on('spawn', () => {
-      // رسالة في اللعبة
-      client.chat("Max Black Bot: Active & Multi-Version 🛡️")
-      
-      // تحديث الواجهة في التليجرام (شغال + اطفاء البوت)
-      updateServerUI(ctx, s.host, s.port, true, id)
-
-      // إشعار دخول في التليجرام
-      ctx.reply(`✅ أبشرك! البوت دخل السيرفر الآن وهو شغال.`)
-    })
-
-    client.on('error', (err) => {
-      delete clients[uid]
-      ctx.reply('❌ فشل الاتصال (تأكد من الآي بي أو أن السيرفر مكرك)')
-      updateServerUI(ctx, s.host, s.port, false, id)
-    })
-
-    client.on('close', () => { 
-      delete clients[uid]
-      updateServerUI(ctx, s.host, s.port, false, id)
-    })
-
-  } catch (e) {
-    ctx.reply('❌ خطأ في النظام.')
-  }
+// --- الأزرار والتفاعلات ---
+bot.action('CHECK_SUB', async ctx => {
+  if (await checkSub(ctx)) ctx.editMessageText('✅ تم التفعيل!', mainMenu())
+  else ctx.answerCbQuery('❌ اشترك في الكل أولاً!', { show_alert: true })
 })
 
 bot.action('ADD', ctx => { waitIP[ctx.from.id] = true; ctx.answerCbQuery(); ctx.reply('📡 أرسل ip:port') })
-bot.action('BACK', ctx => ctx.editMessageText('🎮 لوحة التحكم:', mainMenu()))
-bot.action('CHECK_SUB', async ctx => {
-  if (await checkSub(ctx)) ctx.editMessageText('✅ تم التفعيل!', mainMenu())
-  else ctx.answerCbQuery('❌ اشترك أولاً!', { show_alert: true })
-})
-bot.action(/^DELETE_(\d+)$/, ctx => {
-  const uid = ctx.from.id; const id = parseInt(ctx.match[1])
-  if (servers[uid]) { servers[uid].splice(id, 1); saveDB(); ctx.answerCbQuery('✅ تم الحذف'); ctx.reply('🗑 تم الحذف.', mainMenu()) }
+
+bot.action('LIST', ctx => {
+  const list = servers[ctx.from.id] || []
+  if (list.length === 0) return ctx.answerCbQuery('📭 القائمة فارغة', { show_alert: true })
+  const btns = list.map((s, i) => [Markup.button.callback(`📍 ${s.host}:${s.port}`, `SRV_${i}`)])
+  btns.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
+  ctx.editMessageText('📂 اختر سيرفرك:', Markup.inlineKeyboard(btns))
 })
 
-bot.launch({ dropPendingUpdates: true })
-console.log('✅ UNIVERSAL BOT WITH NOTIFICATIONS READY')
+bot.action(/^SRV_(\d+)$/, ctx => {
+  const id = ctx.match[1]; const s = servers[ctx.from.id][id]
+  updateUI(ctx, s.host, s.port, !!clients[ctx.from.id], id)
+})
+
+bot.action(/^TOGGLE_(\d+)$/, async ctx => {
+  const id = ctx.match[1]; const uid = ctx.from.id; const s = servers[uid][id]
+  
+  if (clients[uid]) {
+    clients[uid].close(); delete clients[uid]
+    return updateUI(ctx, s.host, s.port, false, id)
+  }
+
+  ctx.answerCbQuery('⏳ جاري الدخول...')
+  try {
+    const client = bedrock.createClient({
+      host: s.host, port: parseInt(s.port), username: 'Max_Black', 
+      offline: true, version: undefined // دعم شامل لجميع الإصدارات
+    })
+    clients[uid] = client
+    client.on('spawn', () => {
+      client.chat("Max Black Bot System: Online 🛡️")
+      updateUI(ctx, s.host, s.port, true, id)
+      ctx.reply(`✅ أبشرك! البوت دخل السيرفر الآن وهو شغال.`)
+    })
+    client.on('error', () => { delete clients[uid]; updateUI(ctx, s.host, s.port, false, id) })
+    client.on('close', () => { delete clients[uid]; updateUI(ctx, s.host, s.port, false, id) })
+  } catch (e) { ctx.reply('❌ فشل النظام.') }
+})
+
+bot.action('BACK', ctx => ctx.editMessageText('🎮 لوحة التحكم:', mainMenu()))
+bot.action(/^DELETE_(\d+)$/, ctx => {
+  const uid = ctx.from.id; const id = parseInt(ctx.match[1])
+  if (servers[uid]) { servers[uid].splice(id, 1); saveDB(); ctx.reply('🗑 تم الحذف.', mainMenu()) }
+})
+
+bot.launch()
+console.log('✅ THE FINAL BOT IS RUNNING')
