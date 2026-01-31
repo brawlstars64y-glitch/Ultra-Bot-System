@@ -1,12 +1,16 @@
 {
-  "name": "max-black-bot",
+  "name": "ultra-bot-system",
   "version": "1.0.0",
+  "description": "Minecraft Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "telegraf": "4.16.3",
-    "bedrock-protocol": "1.28.1"
+    "telegraf": "latest",
+    "bedrock-protocol": "latest"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
