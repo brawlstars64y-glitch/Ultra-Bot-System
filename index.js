@@ -1,18 +1,30 @@
 const { Telegraf, Markup } = require('telegraf')
 const bedrock = require('bedrock-protocol')
+const http = require('http')
 
-// ===== BOT =====
+/* ================= KEEP ALIVE ================= */
+http.createServer((req, res) => {
+  res.writeHead(200)
+  res.end('BOT ALIVE')
+}).listen(process.env.PORT || 3000)
+
+/* ================= BOT ================= */
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
-// ===== FORCE SUB =====
-const CHANNELS = ['@aternosbot24','@N_NHGER','@sjxhhdbx72','@vsyfyk']
+/* ================= FORCE SUB ================= */
+const CHANNELS = [
+  '@aternosbot24',
+  '@N_NHGER',
+  '@sjxhhdbx72',
+  '@vsyfyk'
+]
 
-// ===== STORAGE =====
-const servers = {}   // uid => [{host,port}]
-const clients = {}   // uid => client
-const waitIP  = {}   // uid => true
+/* ================= STORAGE ================= */
+const servers = {}
+const clients = {}
+const waitIP = new Set()
 
-// ===== GLOBAL CALLBACK GUARD (الأهم) =====
+/* ================= GLOBAL SAFE ================= */
 bot.use(async (ctx, next) => {
   if (ctx.callbackQuery) {
     try { await ctx.answerCbQuery() } catch {}
@@ -20,13 +32,20 @@ bot.use(async (ctx, next) => {
   return next()
 })
 
-// ===== HELPERS =====
+/* ================= HELPERS ================= */
+async function safeReply(ctx, text, keyboard) {
+  try {
+    return await ctx.reply(text, keyboard)
+  } catch (e) {
+    console.error(e)
+  }
+}
+
 async function safeEdit(ctx, text, keyboard) {
   try {
-    await ctx.editMessageText(text, keyboard)
+    return await ctx.editMessageText(text, keyboard)
   } catch {
-    // fallback مرة وحدة فقط
-    await ctx.reply(text, keyboard)
+    return safeReply(ctx, text, keyboard)
   }
 }
 
@@ -34,124 +53,144 @@ async function checkSub(ctx) {
   for (const ch of CHANNELS) {
     try {
       const m = await ctx.telegram.getChatMember(ch, ctx.from.id)
-      if (m.status === 'left' || m.status === 'kicked') return false
-    } catch { return false }
+      if (['left', 'kicked'].includes(m.status)) return false
+    } catch {
+      // لو البوت مو أدمن → لا توقف البوت
+      continue
+    }
   }
   return true
 }
 
-const mainMenu = () => Markup.inlineKeyboard([
-  [Markup.button.callback('➕ إضافة سيرفر','ADD')],
-  [Markup.button.callback('📂 سيرفراتي','LIST')]
-])
+const mainMenu = () =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback('➕ إضافة سيرفر', 'ADD')],
+    [Markup.button.callback('📂 سيرفراتي', 'LIST')]
+  ])
 
-// ===== START =====
+/* ================= START ================= */
 bot.start(async ctx => {
   if (!(await checkSub(ctx))) {
-    return ctx.reply(
-      '🚫 اشترك بالقنوات ثم /start:\n' +
-      'https://t.me/aternosbot24\n' +
-      'https://t.me/N_NHGER\n' +
-      'https://t.me/sjxhhdbx72\n' +
-      'https://t.me/vsyfyk'
+    return safeReply(
+      ctx,
+      '🚫 اشترك في القنوات ثم أرسل /start',
+      Markup.inlineKeyboard([
+        [Markup.button.url('القنوات', 'https://t.me/aternosbot24')]
+      ])
     )
   }
-  ctx.reply('🎮 لوحة التحكم', mainMenu())
+  safeReply(ctx, '🎮 لوحة التحكم', mainMenu())
 })
 
-// ===== ADD =====
+/* ================= ADD ================= */
 bot.action('ADD', async ctx => {
   if (!(await checkSub(ctx))) return
-  waitIP[ctx.from.id] = true
-  await safeEdit(ctx,'📡 أرسل السيرفر: ip:port')
+  waitIP.add(ctx.from.id)
+  safeReply(ctx, '📡 أرسل السيرفر بصيغة:\nip:port')
 })
 
-// ===== RECEIVE IP =====
+/* ================= TEXT ================= */
 bot.on('text', async ctx => {
   const uid = ctx.from.id
-  if (!waitIP[uid]) return
+  if (!waitIP.has(uid)) return
   if (!(await checkSub(ctx))) return
 
   const t = ctx.message.text.trim()
-  if (!t.includes(':')) return ctx.reply('❌ اكتب ip:port')
+  if (!t.includes(':'))
+    return safeReply(ctx, '❌ الصيغة الصحيحة: ip:port')
 
-  const [host,port] = t.split(':')
-  servers[uid] = servers[uid] || []
-  servers[uid].push({host,port:port.trim()})
-  delete waitIP[uid]
+  const [host, port] = t.split(':')
 
-  ctx.reply('✅ تم الإضافة', mainMenu())
+  servers[uid] ??= []
+  servers[uid].push({ host, port: port.trim() })
+
+  waitIP.delete(uid)
+  safeReply(ctx, '✅ تم حفظ السيرفر', mainMenu())
 })
 
-// ===== LIST =====
+/* ================= LIST ================= */
 bot.action('LIST', async ctx => {
   if (!(await checkSub(ctx))) return
   const list = servers[ctx.from.id]
-  if (!list || list.length===0)
-    return safeEdit(ctx,'📭 لا توجد سيرفرات', mainMenu())
 
-  const kb = list.map((s,i)=>[Markup.button.callback(`${s.host}:${s.port}`,`SRV_${i}`)])
-  kb.push([Markup.button.callback('⬅️ رجوع','BACK')])
-  await safeEdit(ctx,'📂 اختر سيرفر', Markup.inlineKeyboard(kb))
+  if (!list || list.length === 0)
+    return safeReply(ctx, '📭 لا توجد سيرفرات', mainMenu())
+
+  const kb = list.map((s, i) => [
+    Markup.button.callback(`${s.host}:${s.port}`, `SRV_${i}`)
+  ])
+
+  kb.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
+  safeReply(ctx, '📂 اختر سيرفر', Markup.inlineKeyboard(kb))
 })
 
-// ===== SERVER =====
+/* ================= SERVER ================= */
 bot.action(/^SRV_(\d+)$/, async ctx => {
-  if (!(await checkSub(ctx))) return
-  const uid = ctx.from.id, id = ctx.match[1]
+  const uid = ctx.from.id
+  const id = ctx.match[1]
   const s = servers[uid][id]
   const on = !!clients[uid]
 
-  await safeEdit(
+  safeReply(
     ctx,
-    `🖥 ${s.host}:${s.port}\nالحالة: ${on?'🟢 يعمل':'🔴 متوقف'}`,
+    `🖥 ${s.host}:${s.port}\nالحالة: ${on ? '🟢 يعمل' : '🔴 متوقف'}`,
     Markup.inlineKeyboard([
-      [Markup.button.callback(on?'⏹ إيقاف':'▶️ تشغيل',`TOGGLE_${id}`)],
-      [Markup.button.callback('🗑 حذف',`DEL_${id}`)],
-      [Markup.button.callback('⬅️ رجوع','LIST')]
+      [Markup.button.callback(on ? '⏹ إيقاف' : '▶️ تشغيل', `TOGGLE_${id}`)],
+      [Markup.button.callback('🗑 حذف', `DEL_${id}`)],
+      [Markup.button.callback('⬅️ رجوع', 'LIST')]
     ])
   )
 })
 
-// ===== DELETE =====
+/* ================= DELETE ================= */
 bot.action(/^DEL_(\d+)$/, async ctx => {
-  if (!(await checkSub(ctx))) return
-  servers[ctx.from.id].splice(ctx.match[1],1)
-  await safeEdit(ctx,'🗑 تم الحذف', mainMenu())
+  servers[ctx.from.id].splice(ctx.match[1], 1)
+  safeReply(ctx, '🗑 تم حذف السيرفر', mainMenu())
 })
 
-// ===== TOGGLE =====
+/* ================= TOGGLE ================= */
 bot.action(/^TOGGLE_(\d+)$/, async ctx => {
-  if (!(await checkSub(ctx))) return
   const uid = ctx.from.id
   const s = servers[uid][ctx.match[1]]
 
   if (clients[uid]) {
     clients[uid].close()
     delete clients[uid]
-    return safeEdit(ctx,'⏹ تم الإيقاف', mainMenu())
+    return safeReply(ctx, '⏹ تم إيقاف البوت', mainMenu())
   }
 
-  await safeEdit(ctx,'⏳ جاري الدخول...')
+  safeReply(ctx, '⏳ جاري الدخول إلى السيرفر...')
   try {
     const c = bedrock.createClient({
-      host:s.host, port:parseInt(s.port),
-      username:'MaxBlackBot', offline:true
+      host: s.host,
+      port: parseInt(s.port),
+      username: 'MaxBlackBot',
+      offline: true,
+      version: false
     })
-    clients[uid]=c
-    c.on('spawn',()=>safeEdit(ctx,'✅ دخل السيرفر', mainMenu()))
-    c.on('error',()=>{ delete clients[uid]; safeEdit(ctx,'❌ خرج', mainMenu()) })
-  } catch {
-    await safeEdit(ctx,'❌ فشل التشغيل', mainMenu())
+
+    clients[uid] = c
+
+    c.on('spawn', () =>
+      safeReply(ctx, '✅ دخل البوت السيرفر', mainMenu())
+    )
+
+    c.on('error', () => {
+      delete clients[uid]
+      safeReply(ctx, '❌ خرج البوت من السيرفر', mainMenu())
+    })
+  } catch (e) {
+    console.error(e)
+    safeReply(ctx, '❌ فشل التشغيل', mainMenu())
   }
 })
 
-// ===== BACK =====
-bot.action('BACK', ctx => safeEdit(ctx,'🎮 لوحة التحكم', mainMenu()))
+/* ================= BACK ================= */
+bot.action('BACK', ctx => safeReply(ctx, '🎮 لوحة التحكم', mainMenu()))
 
-// ===== SAFE =====
-process.on('uncaughtException',console.error)
-process.on('unhandledRejection',console.error)
+/* ================= SAFE ================= */
+process.on('uncaughtException', console.error)
+process.on('unhandledRejection', console.error)
 
-bot.launch({ dropPendingUpdates:true })
-console.log('✅ BOT ONLINE')
+bot.launch({ dropPendingUpdates: true })
+console.log('✅ BOT STABLE & ONLINE')
