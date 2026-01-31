@@ -5,7 +5,7 @@ const fs = require('fs')
 
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
-// --- إدارة البيانات لضمان عدم ضياع السيرفرات ---
+// --- إدارة البيانات ---
 let servers = {}
 if (fs.existsSync('servers.json')) {
     try { servers = JSON.parse(fs.readFileSync('servers.json')) } catch (e) { servers = {} }
@@ -21,15 +21,13 @@ const CHANNELS = [
 
 const clients = {}; const waitIP = {}
 
-// Keep Alive لضمان عمل الاستضافة
 http.createServer((req, res) => res.end('MAX BLACK SYSTEM ACTIVE')).listen(process.env.PORT || 8080)
 
-// فحص الاشتراك
 async function checkSub(ctx) {
   for (const ch of CHANNELS) {
     try {
       const m = await ctx.telegram.getChatMember(ch.user, ctx.from.id)
-      if (['left', 'kicked', 'null'].includes(member.status)) return false
+      if (['left', 'kicked', 'null'].includes(m.status)) return false
     } catch { continue }
   }
   return true
@@ -62,13 +60,14 @@ bot.action('ADD', ctx => {
 bot.on('text', ctx => {
   const uid = ctx.from.id
   if (!waitIP[uid]) return
-  if (!ctx.message.text.includes(':')) return ctx.reply('❌ الصيغة غلط (ip:port)')
-  const [h, p] = ctx.message.text.split(':')
+  const text = ctx.message.text.trim()
+  if (!text.includes(':')) return ctx.reply('❌ الصيغة غلط (ip:port)')
+  const [h, p] = text.split(':')
   servers[uid] = servers[uid] || []
   servers[uid].push({ host: h.trim(), port: p.trim() })
   saveDB()
   delete waitIP[uid]
-  ctx.reply('✅ تم الحفظ!', mainMenu())
+  ctx.reply('✅ تم حفظ السيرفر!', mainMenu())
 })
 
 bot.action('LIST', ctx => {
@@ -79,11 +78,15 @@ bot.action('LIST', ctx => {
   ctx.reply('📂 اختر السيرفر:', Markup.inlineKeyboard(btns))
 })
 
+// --- عرض السيرفر مع الحالة الجديدة ---
 bot.action(/^SRV_(\d+)$/, ctx => {
-  const id = ctx.match[1]; const s = servers[ctx.from.id][id]; const active = clients[ctx.from.id]
-  ctx.reply(`🖥 السيرفر: ${s.host}:${s.port}\nالحالة: ${active ? '🟢 متصل' : '🔴 مطفأ'}`,
+  const id = ctx.match[1]; 
+  const s = servers[ctx.from.id][id]; 
+  const active = clients[ctx.from.id]; 
+
+  ctx.editMessageText(`🖥 السيرفر: ${s.host}:${s.port}\nالحالة: ${active ? '🟢 شغال' : '🔴 مطفأ'}`,
     Markup.inlineKeyboard([
-      [Markup.button.callback(active ? '⏹ إيقاف البوت' : '▶️ تشغيل البوت', `TOGGLE_${id}`)],
+      [Markup.button.callback(active ? '⏹ اطفاء البوت' : '▶️ تشغيل البوت', `TOGGLE_${id}`)],
       [Markup.button.callback('🗑 حذف السيرفر', `DELETE_${id}`)],
       [Markup.button.callback('⬅️ رجوع', 'LIST')]
     ]))
@@ -93,19 +96,28 @@ bot.action(/^DELETE_(\d+)$/, ctx => {
   const uid = ctx.from.id; const id = parseInt(ctx.match[1])
   if (servers[uid]) {
     servers[uid].splice(id, 1); saveDB()
-    ctx.answerCbQuery('✅ تم الحذف'); ctx.reply('🗑 تم الحذف.', mainMenu())
+    ctx.answerCbQuery('✅ تم الحذف')
+    ctx.reply('🗑 تم الحذف.', mainMenu())
   }
 })
 
-// --- ميزة الدخول الذكي لكل الإصدارات ---
+// --- تشغيل البوت وتحديث الرسالة في التليجرام ---
 bot.action(/^TOGGLE_(\d+)$/, async ctx => {
   const uid = ctx.from.id; const s = servers[uid][ctx.match[1]]
+  
   if (clients[uid]) { 
-    clients[uid].close(); delete clients[uid]
-    return ctx.reply('⏹ تم سحب البوت.') 
+    clients[uid].close(); 
+    delete clients[uid]
+    return ctx.editMessageText(`🖥 السيرفر: ${s.host}:${s.port}\nالحالة: 🔴 مطفأ`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback('▶️ تشغيل البوت', `TOGGLE_${ctx.match[1]}`)],
+        [Markup.button.callback('🗑 حذف السيرفر', `DELETE_${ctx.match[1]}`)],
+        [Markup.button.callback('⬅️ رجوع', 'LIST')]
+      ]))
   }
 
-  ctx.reply('⏳ جاري فحص إصدار السيرفر والاقتحام...')
+  // إرسال تنبيه في التليجرام جاري الدخول
+  ctx.answerCbQuery('⏳ جاري محاولة الدخول...')
   
   try {
     const client = bedrock.createClient({
@@ -113,17 +125,26 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
       port: parseInt(s.port),
       username: 'Max_Black',
       offline: true,
-      // ترك الإصدار undefined يجعل البوت يكتشفه تلقائياً
-      version: undefined,
-      connectTimeout: 10000
+      version: undefined
     })
 
     clients[uid] = client
 
     client.on('spawn', () => {
-      ctx.reply(`✅ تم الدخول بنجاح!`)
-      client.chat("Max Black Bot: Multi-Protocol Enabled 🛡️")
+      // 1. إرسال رسالة شات في اللعبة
+      client.chat("Max Black System: Online 🛡️")
       
+      // 2. تحديث الرسالة في التليجرام لتصبح "شغال" مع زر "اطفاء"
+      ctx.editMessageText(`🖥 السيرفر: ${s.host}:${s.port}\nالحالة: 🟢 شغال`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('⏹ اطفاء البوت', `TOGGLE_${ctx.match[1]}`)],
+          [Markup.button.callback('🗑 حذف السيرفر', `DELETE_${ctx.match[1]}`)],
+          [Markup.button.callback('⬅️ رجوع', 'LIST')]
+        ]))
+        
+      // إرسال رسالة تأكيد مستقلة (اختياري)
+      ctx.reply(`✅ البوت الآن شغال داخل السيرفر!`)
+
       const afk = setInterval(() => {
         if (clients[uid]) client.chat("/list")
         else clearInterval(afk)
@@ -131,12 +152,20 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
     })
 
     client.on('error', (err) => {
-      console.log(err)
       delete clients[uid]
-      ctx.reply('❌ فشل الاتصال. تأكد من الـ IP أو أن السيرفر "مكرك".')
+      ctx.reply('❌ فشل الاتصال بالسيرفر.')
     })
 
-    client.on('close', () => { delete clients[uid] })
+    client.on('close', () => { 
+        delete clients[uid]
+        // إذا أغلق السيرفر فجأة نحدث الحالة لمطفا
+        ctx.editMessageText(`🖥 السيرفر: ${s.host}:${s.port}\nالحالة: 🔴 مطفأ`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('▶️ تشغيل البوت', `TOGGLE_${ctx.match[1]}`)],
+          [Markup.button.callback('🗑 حذف السيرفر', `DELETE_${ctx.match[1]}`)],
+          [Markup.button.callback('⬅️ رجوع', 'LIST')]
+        ])).catch(() => {})
+    })
 
   } catch (e) {
     ctx.reply('❌ خطأ في النظام.')
@@ -146,4 +175,4 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
 bot.action('BACK', ctx => ctx.editMessageText('🎮 لوحة التحكم:', mainMenu()))
 
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ UNIVERSAL BOT IS READY')
+console.log('✅ BOT INTERFACE UPDATED')
