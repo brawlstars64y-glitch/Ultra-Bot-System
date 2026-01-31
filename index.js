@@ -12,13 +12,19 @@ const CHANNELS = [
   '@vsyfyk'
 ]
 
-// ===== Keep Alive لضمان عمل الاستضافة =====
-// ملاحظة: Railway يستخدم غالباً PORT من البيئة، لذا جعلته مرناً
+// ===== Keep Alive المطور لمنع التوقف =====
 const server = http.createServer((req, res) => {
-  res.write('MAX BLACK BOT IS RUNNING')
+  res.write('MAX BLACK BOT IS ALIVE AND WORKING')
   res.end()
 })
 server.listen(process.env.PORT || 7860, '0.0.0.0')
+
+// نبضات القلب: إرسال طلب لنفسه كل 5 دقائق لمنع النوم
+setInterval(() => {
+  http.get(`http://localhost:${process.env.PORT || 7860}/`, (res) => {
+    console.log('Keep-alive ping sent');
+  });
+}, 300000); 
 
 // ===== STORAGE =====
 const servers = {}   
@@ -171,12 +177,28 @@ bot.action(/^TOGGLE_(\d+)$/, async (ctx) => {
     })
 
     clients[uid] = client
-    client.on('spawn', () => ctx.reply('✅ دخل البوت السيرفر بنجاح!'))
+    client.on('spawn', () => {
+      ctx.reply('✅ دخل البوت السيرفر بنجاح!')
+      // منع الطرد بسبب الوقوف (Anti-AFK)
+      setInterval(() => {
+        if (clients[uid]) {
+           // إرسال حركة وهمية كل 30 ثانية ليبقى في السيرفر
+           client.queue('player_auth_input', { position: { x: 0, y: 0, z: 0 }, pitch: 0, yaw: 0, head_yaw: 0, data: 0, input_data: 0, input_mode: 0, play_mode: 0, interaction_model: 0 })
+        }
+      }, 30000);
+    })
+    
     client.on('error', (err) => {
       console.error(err)
       delete clients[uid]
-      ctx.reply('❌ فشل الاتصال: تأكد من عنوان السيرفر أو أن إصداره مدعوم.')
+      ctx.reply('❌ فشل الاتصال: السيرفر قد يكون مغلقاً أو الإصدار غير مدعوم.')
     })
+    
+    client.on('close', () => {
+       delete clients[uid]
+       ctx.reply('⚠️ البوت خرج من السيرفر (تم قطع الاتصال).')
+    })
+
   } catch (e) {
     ctx.reply('❌ فشل تشغيل الاتصال.')
   }
@@ -192,11 +214,6 @@ bot.action('BACK', ctx => {
 process.on('uncaughtException', console.error)
 process.on('unhandledRejection', console.error)
 
-// تشغيل البوت مع تنظيف التحديثات القديمة
 bot.launch({ dropPendingUpdates: true }).then(() => {
-  console.log('✅ BOT IS READY (MULTI-VERSION SUPPORT)')
+  console.log('✅ BOT IS READY AND REFRESHING EVERY 5 MINS')
 })
-
-// لمنع العملية من التوقف تلقائياً
-process.once('SIGINT', () => bot.stop('SIGINT'))
-process.once('SIGTERM', () => bot.stop('SIGTERM'))
