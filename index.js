@@ -5,7 +5,7 @@ const fs = require('fs')
 
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
-// --- حفظ البيانات ---
+// --- نظام حفظ البيانات ---
 let servers = {}
 if (fs.existsSync('servers.json')) {
     try { servers = JSON.parse(fs.readFileSync('servers.json')) } catch (e) { servers = {} }
@@ -21,8 +21,10 @@ const CHANNELS = [
 
 const clients = {}; const waitIP = {}
 
+// Keep Alive لمنع التوقف على Railway
 http.createServer((req, res) => res.end('MAX BLACK SYSTEM ACTIVE')).listen(process.env.PORT || 8080)
 
+// فحص الاشتراك
 async function checkSub(ctx) {
   for (const ch of CHANNELS) {
     try {
@@ -38,7 +40,7 @@ const mainMenu = () => Markup.inlineKeyboard([
   [Markup.button.callback('📂 قائمة سيرفراتي', 'LIST')]
 ])
 
-// دالة تحديث واجهة السيرفر (الحالة والأزرار)
+// دالة تحديث واجهة التليجرام (الحالة والأزرار)
 function updateServerUI(ctx, host, port, active, id) {
   const text = `🖥 السيرفر: ${host}:${port}\nالحالة: ${active ? '🟢 شغال' : '🔴 مطفأ'}`
   const keyboard = Markup.inlineKeyboard([
@@ -49,6 +51,23 @@ function updateServerUI(ctx, host, port, active, id) {
   return ctx.editMessageText(text, keyboard).catch(() => {})
 }
 
+// --- 1. معالج النصوص (حل مشكلة عدم الرد) ---
+bot.on('text', async (ctx) => {
+  const uid = ctx.from.id
+  if (waitIP[uid]) {
+    const text = ctx.message.text.trim()
+    if (!text.includes(':')) return ctx.reply('❌ الصيغة غلط! أرسل ip:port')
+    
+    const [h, p] = text.split(':')
+    servers[uid] = servers[uid] || []
+    servers[uid].push({ host: h.trim(), port: p.trim() })
+    saveDB()
+    delete waitIP[uid]
+    return ctx.reply(`✅ تم حفظ السيرفر بنجاح!`, mainMenu())
+  }
+})
+
+// --- 2. الأوامر الأساسية ---
 bot.start(async ctx => {
   if (!(await checkSub(ctx))) {
     const btns = CHANNELS.map(ch => [Markup.button.url(ch.name, ch.url)])
@@ -71,6 +90,7 @@ bot.action(/^SRV_(\d+)$/, ctx => {
   updateServerUI(ctx, s.host, s.port, !!active, id)
 })
 
+// --- 3. تشغيل البوت مع دعم جميع الإصدارات ---
 bot.action(/^TOGGLE_(\d+)$/, async ctx => {
   const id = ctx.match[1]; const uid = ctx.from.id; const s = servers[uid][id]
   
@@ -79,29 +99,34 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
     return updateServerUI(ctx, s.host, s.port, false, id)
   }
 
-  ctx.answerCbQuery('⏳ جاري الدخول...')
+  ctx.answerCbQuery('⏳ جاري فحص الإصدار والدخول...')
   
   try {
     const client = bedrock.createClient({
-      host: s.host, port: parseInt(s.port), username: 'Max_Black', offline: true, version: undefined
+      host: s.host,
+      port: parseInt(s.port),
+      username: 'Max_Black',
+      offline: true,
+      version: undefined, // "undefined" تعني اكتشاف الإصدار تلقائياً (1.8 إلى 1.21.132)
+      connectTimeout: 15000
     })
 
     clients[uid] = client
 
     client.on('spawn', () => {
-      // 1. إرسال رسالة في شات اللعبة
-      client.chat("Max Black Bot System: Online 🛡️")
+      // رسالة في اللعبة
+      client.chat("Max Black Bot: Active & Multi-Version 🛡️")
       
-      // 2. تحديث لوحة التحكم في التليجرام (الحالة والأزرار)
+      // تحديث الواجهة في التليجرام (شغال + اطفاء البوت)
       updateServerUI(ctx, s.host, s.port, true, id)
 
-      // 3. إرسال رسالة "إشعار" مستقلة في التليجرام
+      // إشعار دخول في التليجرام
       ctx.reply(`✅ أبشرك! البوت دخل السيرفر الآن وهو شغال.`)
     })
 
-    client.on('error', () => {
+    client.on('error', (err) => {
       delete clients[uid]
-      ctx.reply('❌ فشل الاتصال بالسيرفر.')
+      ctx.reply('❌ فشل الاتصال (تأكد من الآي بي أو أن السيرفر مكرك)')
       updateServerUI(ctx, s.host, s.port, false, id)
     })
 
@@ -115,15 +140,11 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
   }
 })
 
+bot.action('ADD', ctx => { waitIP[ctx.from.id] = true; ctx.answerCbQuery(); ctx.reply('📡 أرسل ip:port') })
 bot.action('BACK', ctx => ctx.editMessageText('🎮 لوحة التحكم:', mainMenu()))
-
-bot.action('ADD', ctx => { waitIP[ctx.from.id] = true; ctx.reply('📡 أرسل ip:port') })
-bot.on('text', ctx => {
-  const uid = ctx.from.id; if (!waitIP[uid]) return
-  const text = ctx.message.text.trim()
-  if (!text.includes(':')) return ctx.reply('❌ الصيغة غلط')
-  const [h, p] = text.split(':'); servers[uid] = servers[uid] || []; servers[uid].push({ host: h.trim(), port: p.trim() })
-  saveDB(); delete waitIP[uid]; ctx.reply('✅ تم حفظ السيرفر!', mainMenu())
+bot.action('CHECK_SUB', async ctx => {
+  if (await checkSub(ctx)) ctx.editMessageText('✅ تم التفعيل!', mainMenu())
+  else ctx.answerCbQuery('❌ اشترك أولاً!', { show_alert: true })
 })
 bot.action(/^DELETE_(\d+)$/, ctx => {
   const uid = ctx.from.id; const id = parseInt(ctx.match[1])
@@ -131,4 +152,4 @@ bot.action(/^DELETE_(\d+)$/, ctx => {
 })
 
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ NOTIFICATION SYSTEM READY')
+console.log('✅ UNIVERSAL BOT WITH NOTIFICATIONS READY')
