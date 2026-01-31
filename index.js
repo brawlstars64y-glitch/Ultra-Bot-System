@@ -2,13 +2,11 @@ const { Telegraf, Markup } = require('telegraf')
 const bedrock = require('bedrock-protocol')
 const http = require('http')
 
-// ===== حل مشكلة التوقف (Keep Alive المحسن) =====
-// الاستضافة تحتاج رؤية نشاط مستمر على هذا المنفذ
+// ===== Keep Alive لضمان قبول Railway للمشروع =====
 http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.write('MAX BLACK BOT IS ALIVE');
-  res.end();
-}).listen(7860);
+  res.writeHead(200)
+  res.end('MAX BLACK BOT IS RUNNING')
+}).listen(process.env.PORT || 8080) 
 
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
@@ -45,11 +43,9 @@ function mainMenu() {
 bot.start(async (ctx) => {
   if (!(await checkSubscription(ctx))) {
     return ctx.reply(
-      `⚠️ يجب عليك الاشتراك في القنوات أولاً:`,
+      `⚠️ يجب عليك الاشتراك في القنوات أولاً لتتمكن من استخدام البوت:`,
       Markup.inlineKeyboard([
-        [Markup.button.url('القناة 1', `https://t.me/aternosbot24`), Markup.button.url('القناة 2', `https://t.me/N_NHGER`)],
-        [Markup.button.url('القناة 3', `https://t.me/sjxhhdbx72`), Markup.button.url('القناة 4', `https://t.me/vsyfyk`)],
-        [Markup.button.callback('✅ تم الاشتراك', 'CHECK_SUB')]
+        [Markup.button.callback('✅ تم الاشتراك في الكل', 'CHECK_SUB')]
       ])
     )
   }
@@ -69,7 +65,7 @@ bot.action('CHECK_SUB', async (ctx) => {
 bot.action('ADD', async (ctx) => {
   ctx.answerCbQuery()
   waitIP[ctx.from.id] = true
-  ctx.reply('📡 أرسل عنوان السيرفر هكذا -> ip:port')
+  ctx.reply('📡 أرسل عنوان السيرفر والمنفذ هكذا -> ip:port')
 })
 
 bot.on('text', async (ctx) => {
@@ -91,14 +87,14 @@ bot.on('text', async (ctx) => {
 bot.action('LIST', async (ctx) => {
   ctx.answerCbQuery()
   const list = servers[ctx.from.id]
-  if (!list || list.length === 0) return ctx.reply('📭 القائمة فارغة.', mainMenu())
+  if (!list || list.length === 0) return ctx.reply('📭 قائمة سيرفراتك فارغة.', mainMenu())
 
   const buttons = list.map((s, i) => [Markup.button.callback(`📍 ${s.host}:${s.port}`, `SRV_${i}`)])
   buttons.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
-  ctx.reply('📂 اختر السيرفر:', Markup.inlineKeyboard(buttons))
+  ctx.reply('📂 اختر السيرفر المطلوب:', Markup.inlineKeyboard(buttons))
 })
 
-// --- قائمة السيرفر الواحد ---
+// --- لوحة السيرفر الواحد ---
 bot.action(/^SRV_(\d+)$/, async (ctx) => {
   ctx.answerCbQuery()
   const id = ctx.match[1]
@@ -115,18 +111,18 @@ bot.action(/^SRV_(\d+)$/, async (ctx) => {
   )
 })
 
-// --- وظيفة الحذف ---
+// --- وظيفة حذف السيرفر (المطلوبة) ---
 bot.action(/^DELETE_(\d+)$/, async (ctx) => {
   const uid = ctx.from.id
   const id = parseInt(ctx.match[1])
   if (servers[uid] && servers[uid][id]) {
     servers[uid].splice(id, 1)
     await ctx.answerCbQuery('✅ تم الحذف')
-    ctx.reply('🗑 تم حذف السيرفر من قائمتك.', mainMenu())
+    ctx.reply('🗑 تم حذف السيرفر بنجاح من قائمتك.', mainMenu())
   }
 })
 
-// --- تشغيل وإيقاف الاتصال (دعم 1.20 - 1.21.132) ---
+// --- تشغيل البوت في اللعبة ---
 bot.action(/^TOGGLE_(\d+)$/, async (ctx) => {
   ctx.answerCbQuery()
   const uid = ctx.from.id
@@ -135,36 +131,36 @@ bot.action(/^TOGGLE_(\d+)$/, async (ctx) => {
   if (clients[uid]) {
     clients[uid].close()
     delete clients[uid]
-    return ctx.reply('⏹ تم سحب البوت.')
+    return ctx.reply('⏹ تم سحب البوت من السيرفر.')
   }
 
-  ctx.reply('⏳ جاري محاولة الدخول...')
+  ctx.reply('⏳ جاري محاولة الدخول (1.20 - 1.21.132)...')
   try {
     const client = bedrock.createClient({
       host: s.host,
       port: parseInt(s.port),
       username: 'Max_Bot',
       offline: true
-      // ترك الإصدار فارغاً يجعله يتعرف تلقائياً على السيرفر
     })
 
     clients[uid] = client
-    client.on('spawn', () => ctx.reply('✅ البوت دخل السيرفر!'))
-    client.on('error', () => {
+    client.on('spawn', () => ctx.reply('✅ دخل البوت السيرفر بنجاح!'))
+    client.on('error', (err) => {
+      console.error(err)
       delete clients[uid]
-      ctx.reply('❌ فشل الاتصال.')
+      ctx.reply('❌ فشل الاتصال بالسيرفر.')
     })
-  } catch { ctx.reply('❌ حدث خطأ.') }
+  } catch (e) { ctx.reply('❌ حدث خطأ في النظام.') }
 })
 
 bot.action('BACK', ctx => {
   ctx.answerCbQuery()
-  ctx.reply('🎮 القائمة الرئيسية:', mainMenu())
+  ctx.reply('🎮 لوحة التحكم الرئيسية:', mainMenu())
 })
 
-// الحماية من الانهيار
-process.on('uncaughtException', (err) => console.error('Error:', err))
-process.on('unhandledRejection', (err) => console.error('Rejection:', err))
+// معالجة الأخطاء لمنع توقف البوت
+process.on('uncaughtException', console.error)
+process.on('unhandledRejection', console.error)
 
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ BOT STARTED')
+console.log('✅ BOT IS DEPLOYED ON RAILWAY')
