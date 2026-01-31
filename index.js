@@ -1,10 +1,10 @@
 const { Telegraf, Markup } = require('telegraf')
-const mineflayer = require('mineflayer')
-const bedrock = require('mineflayer-bedrock')
+const bedrock = require('bedrock-protocol')
 const http = require('http')
 
-// Keep Alive لـ Railway
-http.createServer((req, res) => res.end('ONLINE')).listen(process.env.PORT || 8080)
+// منفذ Railway الإجباري
+const PORT = process.env.PORT || 8080
+http.createServer((req, res) => res.end('BOT ACTIVE')).listen(PORT)
 
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 const CHANNELS = ['@aternosbot24', '@N_NHGER', '@sjxhhdbx72', '@vsyfyk']
@@ -74,24 +74,20 @@ bot.action(/^DEL_(\d+)$/, ctx => {
 
 bot.action(/^TOGGLE_(\d+)$/, ctx => {
   const uid = ctx.from.id; const s = servers[uid][ctx.match[1]]
-  if (clients[uid]) { clients[uid].quit(); delete clients[uid]; return ctx.reply('⏹ تم السحب.') }
+  if (clients[uid]) { clients[uid].close(); delete clients[uid]; return ctx.reply('⏹ تم سحب البوت.') }
 
-  ctx.reply('⏳ جاري الدخول (دعم إصدارات متعددة)...')
+  ctx.reply('⏳ جاري محاولة الدخول (1.20 - 1.21)...')
   try {
-    const botInstance = mineflayer.createBot({
-      host: s.host,
-      port: parseInt(s.port),
-      username: 'Max_Bot',
-      version: false // يسمح بالتعرف التلقائي
-    })
-    bedrock(botInstance) // تفعيل دعم البدروك
-    clients[uid] = botInstance
-    botInstance.on('spawn', () => ctx.reply('✅ دخل البوت السيرفر!'))
-    botInstance.on('error', () => { delete clients[uid]; ctx.reply('❌ فشل الاتصال.') })
-  } catch { ctx.reply('❌ خطأ تقني.') }
+    const c = bedrock.createClient({ host: s.host, port: parseInt(s.port), username: 'Max_Bot', offline: true })
+    clients[uid] = c
+    c.on('spawn', () => ctx.reply('✅ دخل البوت السيرفر!'))
+    c.on('error', (err) => { console.log(err); delete clients[uid]; ctx.reply('❌ فشل الاتصال.') })
+  } catch { ctx.reply('❌ خطأ فني.') }
 })
 
 bot.action('BACK', ctx => ctx.editMessageText('🎮 لوحة التحكم:', menu()))
 
-bot.launch()
-console.log('✅ BOT IS RUNNING STABLY')
+bot.launch().then(() => console.log('✅ BOT DEPLOYED'))
+
+process.on('uncaughtException', console.error)
+process.on('unhandledRejection', console.error)
