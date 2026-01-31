@@ -1,12 +1,12 @@
 {
-  "name": "telegram-bot",
+  "name": "max-black-bot",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
     "telegraf": "^4.16.3",
-    "bedrock-protocol": "^3.41.0"
+    "bedrock-protocol": "1.28.1"
+  },
+  "scripts": {
+    "start": "node index.js"
   }
 }
