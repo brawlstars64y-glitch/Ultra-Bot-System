@@ -1,13 +1,16 @@
 {
   "name": "max-black-bot",
   "version": "1.0.0",
+  "description": "Minecraft Bot",
   "main": "index.js",
-  "dependencies": {
-    "telegraf": "4.16.3",
-    "mineflayer": "^4.20.0",
-    "mineflayer-bedrock": "^1.1.0"
-  },
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "telegraf": "4.16.3",
+    "bedrock-protocol": "1.25.0"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
