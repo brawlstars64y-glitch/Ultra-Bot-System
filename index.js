@@ -3,10 +3,9 @@ const bedrock = require('bedrock-protocol')
 const http = require('http')
 const fs = require('fs')
 
-// توكن البوت الخاص بكِ
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
-// --- إدارة البيانات (قاعدة بيانات بسيطة) ---
+// --- إدارة البيانات ---
 let servers = {}
 if (fs.existsSync('servers.json')) {
     try { servers = JSON.parse(fs.readFileSync('servers.json')) } catch (e) { servers = {} }
@@ -20,13 +19,10 @@ const CHANNELS = [
   { name: 'القناة 4', user: '@vsyfyk', url: 'https://t.me/vsyfyk' }
 ]
 
-const clients = {}; 
-const waitIP = {};
+const clients = {}; const waitIP = {};
 
-// Keep Alive لضمان استمرار العمل على Railway
 http.createServer((req, res) => res.end('MAX BLACK IS ALIVE')).listen(process.env.PORT || 8080)
 
-// --- فحص الاشتراك ---
 async function checkSub(ctx) {
   for (const ch of CHANNELS) {
     try {
@@ -37,13 +33,11 @@ async function checkSub(ctx) {
   return true
 }
 
-// --- القائمة الرئيسية ---
 const mainMenu = () => Markup.inlineKeyboard([
   [Markup.button.callback('➕ إضافة سيرفر جديد', 'ADD')],
   [Markup.button.callback('📂 قائمة سيرفراتي', 'LIST')]
 ])
 
-// --- تحديث واجهة السيرفر (الحالة والأزرار) ---
 async function updateUI(ctx, host, port, active, id) {
   const text = `🖥 السيرفر: ${host}:${port}\nالحالة: ${active ? '🟢 شغال' : '🔴 مطفأ'}`
   const kb = Markup.inlineKeyboard([
@@ -54,18 +48,15 @@ async function updateUI(ctx, host, port, active, id) {
   try { await ctx.editMessageText(text, kb) } catch (e) {}
 }
 
-// --- معالج الرسائل النصية (إضافة السيرفر) ---
 bot.on('text', async (ctx) => {
   const uid = ctx.from.id
   if (waitIP[uid]) {
     const text = ctx.message.text.trim()
     if (!text.includes(':')) return ctx.reply('❌ ارسل ip:port')
-    
     const [h, p] = text.split(':')
     servers[uid] = servers[uid] || []
     servers[uid].push({ host: h.trim(), port: p.trim() })
-    saveDB()
-    delete waitIP[uid]
+    saveDB(); delete waitIP[uid]
     return ctx.reply('✅ تم حفظ السيرفر بنجاح!', mainMenu())
   }
   if (ctx.message.text === '/start') {
@@ -74,14 +65,13 @@ bot.on('text', async (ctx) => {
         btns.push([Markup.button.callback('✅ تم الاشتراك', 'CHECK_SUB')])
         return ctx.reply('⚠️ اشترك أولاً:', Markup.inlineKeyboard(btns))
      }
-     ctx.reply('🎮 أهلاً بك يا بطل:', mainMenu())
+     ctx.reply('🎮 أهلاً بكِ يا بطلة:', mainMenu())
   }
 })
 
-// --- الأزرار والتفاعلات ---
 bot.action('CHECK_SUB', async ctx => {
   if (await checkSub(ctx)) ctx.editMessageText('✅ تم التفعيل!', mainMenu())
-  else ctx.answerCbQuery('❌ اشترك في الكل أولاً!', { show_alert: true })
+  else ctx.answerCbQuery('❌ اشترك أولاً!', { show_alert: true })
 })
 
 bot.action('ADD', ctx => { waitIP[ctx.from.id] = true; ctx.answerCbQuery(); ctx.reply('📡 أرسل ip:port') })
@@ -107,53 +97,53 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
     return updateUI(ctx, s.host, s.port, false, id)
   }
 
-  ctx.answerCbQuery('⏳ جاري الدخول...')
+  ctx.answerCbQuery('⏳ جاري محاولة الدخول...')
   try {
     const client = bedrock.createClient({
       host: s.host, port: parseInt(s.port), username: 'Max_Black', 
-      offline: true, version: undefined // دعم شامل لجميع الإصدارات
+      offline: true, version: undefined, connectTimeout: 15000
     })
     clients[uid] = client
-    
-    client.on('spawn', () => {
-      // إرسال رسالة شات لمرة واحدة عند الدخول فقط للتأكيد
-      client.chat("Max Black Bot System: Online 🛡️")
-      updateUI(ctx, s.host, s.port, true, id)
-      ctx.reply(`✅ أبشرك! البوت دخل السيرفر الآن وهو شغال.`)
 
-      // --- إضافة نظام Anti-AFK (حركة فقط) ---
-      let toggleMove = true
-      const afkTimer = setInterval(() => {
-        if (clients[uid]) {
-          // البوت يقفز ويتحرك قليلاً لتجنب طرد السيرفر
-          client.setControlState('jump', true)
-          client.setControlState(toggleMove ? 'left' : 'right', true)
-          
-          setTimeout(() => {
-            if (clients[uid]) {
-              client.setControlState('jump', false)
-              client.setControlState('left', false)
-              client.setControlState('right', false)
-            }
-          }, 1000)
-          
-          toggleMove = !toggleMove
-        } else {
-          clearInterval(afkTimer)
-        }
-      }, 25000) // تكرار كل 25 ثانية
+    client.on('spawn', () => {
+      updateUI(ctx, s.host, s.port, true, id)
+      ctx.reply(`✅ أبشركِ! البوت دخل السيرفر الآن وهو شغال.`)
+
+      // --- نظام Anti-AFK حذر (حركة صامتة بعد 5 ثواني من الدخول) ---
+      setTimeout(() => {
+        let toggle = true
+        const timer = setInterval(() => {
+          if (clients[uid]) {
+            client.setControlState('jump', true)
+            client.setControlState(toggle ? 'left' : 'right', true)
+            setTimeout(() => {
+              if (clients[uid]) {
+                client.setControlState('jump', false)
+                client.setControlState('left', false)
+                client.setControlState('right', false)
+              }
+            }, 800)
+            toggle = !toggle
+          } else { clearInterval(timer) }
+        }, 25000)
+      }, 5000) 
+    })
+
+    client.on('error', (err) => { 
+        console.log(err); delete clients[uid]; 
+        updateUI(ctx, s.host, s.port, false, id);
+        ctx.reply('❌ فشل الدخول. تأكد من الـ IP أو أن السيرفر يدعم البوتات.') 
     })
     
-    client.on('error', () => { delete clients[uid]; updateUI(ctx, s.host, s.port, false, id) })
     client.on('close', () => { delete clients[uid]; updateUI(ctx, s.host, s.port, false, id) })
-  } catch (e) { ctx.reply('❌ فشل النظام.') }
+  } catch (e) { ctx.reply('❌ خطأ في النظام.') }
 })
 
 bot.action('BACK', ctx => ctx.editMessageText('🎮 لوحة التحكم:', mainMenu()))
 bot.action(/^DELETE_(\d+)$/, ctx => {
   const uid = ctx.from.id; const id = parseInt(ctx.match[1])
-  if (servers[uid]) { servers [uid].splice(id, 1); saveDB(); ctx.reply('🗑 تم الحذف.', mainMenu()) }
+  if (servers[uid]) { servers[uid].splice(id, 1); saveDB(); ctx.reply('🗑 تم الحذف.', mainMenu()) }
 })
 
 bot.launch()
-console.log('✅ THE FINAL BOT IS RUNNING WITH SILENT ANTI-AFK')
+console.log('✅ FIXED BOT IS RUNNING')
