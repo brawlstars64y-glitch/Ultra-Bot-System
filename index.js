@@ -5,7 +5,6 @@ const http = require('http')
 // ===== إعدادات القنوات والتوكن =====
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
-// القنوات الجديدة التي أرسلتِها
 const CHANNELS = [
   '@aternosbot24',
   '@N_NHGER',
@@ -13,7 +12,7 @@ const CHANNELS = [
   '@vsyfyk'
 ]
 
-// ===== Keep Alive لضمان عمل الاستضافة (Hugging Face) =====
+// ===== Keep Alive لضمان عمل الاستضافة =====
 http.createServer((req, res) => {
   res.write('MAX BLACK BOT IS RUNNING')
   res.end()
@@ -24,7 +23,7 @@ const servers = {}
 const clients = {}   
 const waitIP = {}    
 
-// ===== دالة التحقق من الاشتراك في جميع القنوات =====
+// ===== دالة التحقق من الاشتراك =====
 async function checkSubscription(ctx) {
   for (const channel of CHANNELS) {
     try {
@@ -32,7 +31,6 @@ async function checkSubscription(ctx) {
       if (['left', 'kicked', 'null'].includes(member.status)) return false
     } catch (e) {
       console.error(`خطأ في فحص القناة ${channel}:`, e)
-      // في حال لم يكن البوت أدمن في إحدى القنوات، سيتخطى الفحص لها لكي لا يتوقف البوت
       continue 
     }
   }
@@ -60,17 +58,17 @@ bot.start(async (ctx) => {
       ])
     )
   }
-  ctx.reply('🎮 أهلاً بكِ في لوحة التحكم، اختاري خياراً:', mainMenu())
+  ctx.reply('🎮 أهلاً بك في لوحة التحكم، اختر خياراً:', mainMenu())
 })
 
 // ===== CHECK SUB BUTTON =====
 bot.action('CHECK_SUB', async (ctx) => {
   const isSubscribed = await checkSubscription(ctx)
   if (isSubscribed) {
-    await ctx.answerCbQuery('✅ شكراً لكِ! تم تفعيل البوت.')
+    await ctx.answerCbQuery('✅ شكراً لك! تم تفعيل البوت.')
     ctx.editMessageText('🎮 تم التحقق بنجاح، يمكنك الآن البدء بالاقتحام:', mainMenu())
   } else {
-    await ctx.answerCbQuery('❌ لم تشتركي في جميع القنوات بعد!', { show_alert: true })
+    await ctx.answerCbQuery('❌ لم تشترك في جميع القنوات بعد!', { show_alert: true })
   }
 })
 
@@ -79,7 +77,7 @@ bot.action('ADD', async (ctx) => {
   if (!(await checkSubscription(ctx))) return
   ctx.answerCbQuery()
   waitIP[ctx.from.id] = true
-  ctx.reply('📡 أرسلي الآن عنوان السيرفر والمنفذ هكذا:\nip:port')
+  ctx.reply('📡 أرسل الآن عنوان السيرفر والمنفذ هكذا:\nip:port')
 })
 
 // ===== RECEIVE IP =====
@@ -116,10 +114,10 @@ bot.action('LIST', async (ctx) => {
   )
   buttons.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
 
-  ctx.reply('📂 اختاري السيرفر المطلوب:', Markup.inlineKeyboard(buttons))
+  ctx.reply('📂 اختر السيرفر المطلوب:', Markup.inlineKeyboard(buttons))
 })
 
-// ===== SERVER MENU =====
+// ===== SERVER MENU (تم إضافة زر الحذف هنا) =====
 bot.action(/^SRV_(\d+)$/, async (ctx) => {
   if (!(await checkSubscription(ctx))) return
   ctx.answerCbQuery()
@@ -131,9 +129,21 @@ bot.action(/^SRV_(\d+)$/, async (ctx) => {
     `🖥 السيرفر: ${s.host}:${s.port}\nالحالة: ${active ? '🟢 متصل' : '🔴 غير متصل'}`,
     Markup.inlineKeyboard([
       [Markup.button.callback(active ? '⏹ إيقاف البوت' : '▶️ تشغيل البوت', `TOGGLE_${id}`)],
+      [Markup.button.callback('🗑 حذف السيرفر', `DELETE_${id}`)],
       [Markup.button.callback('⬅️ رجوع', 'LIST')]
     ])
   )
+})
+
+// ===== DELETE ACTION (وظيفة الحذف) =====
+bot.action(/^DELETE_(\d+)$/, async (ctx) => {
+  const uid = ctx.from.id
+  const id = parseInt(ctx.match[1])
+  if (servers[uid] && servers[uid][id]) {
+    servers[uid].splice(id, 1)
+    await ctx.answerCbQuery('✅ تم الحذف')
+    ctx.reply('🗑 تم حذف السيرفر بنجاح من قائمتك.', mainMenu())
+  }
 })
 
 // ===== TOGGLE BOT PLAYER =====
@@ -181,4 +191,4 @@ process.on('uncaughtException', console.error)
 process.on('unhandledRejection', console.error)
 
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ BOT UPDATED WITH 4 CHANNELS')
+console.log('✅ BOT UPDATED AND READY')
