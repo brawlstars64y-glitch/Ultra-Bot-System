@@ -3,6 +3,7 @@ const bedrock = require('bedrock-protocol')
 const http = require('http')
 const fs = require('fs')
 
+// توكن البوت
 const bot = new Telegraf('8348711486:AAFX5lYl0RMPTKR_8rsV_XdC23zPa7lkRIQ')
 
 // --- إدارة البيانات ---
@@ -21,7 +22,7 @@ const CHANNELS = [
 
 const clients = {}; const waitIP = {};
 
-http.createServer((req, res) => res.end('MAX BLACK IS ALIVE')).listen(process.env.PORT || 8080)
+http.createServer((req, res) => res.end('MAX BLACK SYSTEM ACTIVE')).listen(process.env.PORT || 8080)
 
 async function checkSub(ctx) {
   for (const ch of CHANNELS) {
@@ -38,6 +39,7 @@ const mainMenu = () => Markup.inlineKeyboard([
   [Markup.button.callback('📂 قائمة سيرفراتي', 'LIST')]
 ])
 
+// تحديث الواجهة (بصيغة المذكر: شغال / مطفأ / اطفاء البوت)
 async function updateUI(ctx, host, port, active, id) {
   const text = `🖥 السيرفر: ${host}:${port}\nالحالة: ${active ? '🟢 شغال' : '🔴 مطفأ'}`
   const kb = Markup.inlineKeyboard([
@@ -52,7 +54,7 @@ bot.on('text', async (ctx) => {
   const uid = ctx.from.id
   if (waitIP[uid]) {
     const text = ctx.message.text.trim()
-    if (!text.includes(':')) return ctx.reply('❌ ارسل ip:port')
+    if (!text.includes(':')) return ctx.reply('❌ أرسل ip:port')
     const [h, p] = text.split(':')
     servers[uid] = servers[uid] || []
     servers[uid].push({ host: h.trim(), port: p.trim() })
@@ -63,25 +65,25 @@ bot.on('text', async (ctx) => {
      if (!(await checkSub(ctx))) {
         const btns = CHANNELS.map(ch => [Markup.button.url(ch.name, ch.url)])
         btns.push([Markup.button.callback('✅ تم الاشتراك', 'CHECK_SUB')])
-        return ctx.reply('⚠️ اشترك أولاً:', Markup.inlineKeyboard(btns))
+        return ctx.reply('⚠️ اشترك أولاً لفتح اللوحة:', Markup.inlineKeyboard(btns))
      }
-     ctx.reply('🎮 أهلاً بكِ يا بطلة:', mainMenu())
+     ctx.reply('🎮 أهلاً بك يا بطل، اختر خياراً:', mainMenu())
   }
 })
 
 bot.action('CHECK_SUB', async ctx => {
   if (await checkSub(ctx)) ctx.editMessageText('✅ تم التفعيل!', mainMenu())
-  else ctx.answerCbQuery('❌ اشترك أولاً!', { show_alert: true })
+  else ctx.answerCbQuery('❌ اشترك في القنوات أولاً!', { show_alert: true })
 })
 
-bot.action('ADD', ctx => { waitIP[ctx.from.id] = true; ctx.answerCbQuery(); ctx.reply('📡 أرسل ip:port') })
+bot.action('ADD', ctx => { waitIP[ctx.from.id] = true; ctx.answerCbQuery(); ctx.reply('📡 أرسل عنوان السيرفر والمنفذ (ip:port)') })
 
 bot.action('LIST', ctx => {
   const list = servers[ctx.from.id] || []
   if (list.length === 0) return ctx.answerCbQuery('📭 القائمة فارغة', { show_alert: true })
   const btns = list.map((s, i) => [Markup.button.callback(`📍 ${s.host}:${s.port}`, `SRV_${i}`)])
   btns.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
-  ctx.editMessageText('📂 اختر سيرفرك:', Markup.inlineKeyboard(btns))
+  ctx.editMessageText('📂 اختر السيرفر المطلوب:', Markup.inlineKeyboard(btns))
 })
 
 bot.action(/^SRV_(\d+)$/, ctx => {
@@ -107,9 +109,9 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
 
     client.on('spawn', () => {
       updateUI(ctx, s.host, s.port, true, id)
-      ctx.reply(`✅ أبشركِ! البوت دخل السيرفر الآن وهو شغال.`)
+      ctx.reply(`✅ أبشر يا بطل! البوت دخل السيرفر وهو شغال الآن.`)
 
-      // --- نظام Anti-AFK حذر (حركة صامتة بعد 5 ثواني من الدخول) ---
+      // نظام Anti-AFK صامت (حركة فقط)
       setTimeout(() => {
         let toggle = true
         const timer = setInterval(() => {
@@ -129,10 +131,10 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
       }, 5000) 
     })
 
-    client.on('error', (err) => { 
-        console.log(err); delete clients[uid]; 
+    client.on('error', () => { 
+        delete clients[uid]; 
         updateUI(ctx, s.host, s.port, false, id);
-        ctx.reply('❌ فشل الدخول. تأكد من الـ IP أو أن السيرفر يدعم البوتات.') 
+        ctx.reply('❌ فشل الدخول، تأكد من البيانات أو حالة السيرفر.') 
     })
     
     client.on('close', () => { delete clients[uid]; updateUI(ctx, s.host, s.port, false, id) })
@@ -142,8 +144,8 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
 bot.action('BACK', ctx => ctx.editMessageText('🎮 لوحة التحكم:', mainMenu()))
 bot.action(/^DELETE_(\d+)$/, ctx => {
   const uid = ctx.from.id; const id = parseInt(ctx.match[1])
-  if (servers[uid]) { servers[uid].splice(id, 1); saveDB(); ctx.reply('🗑 تم الحذف.', mainMenu()) }
+  if (servers[uid]) { servers[uid].splice(id, 1); saveDB(); ctx.reply('🗑 تم الحذف بنجاح.', mainMenu()) }
 })
 
 bot.launch()
-console.log('✅ FIXED BOT IS RUNNING')
+console.log('✅ BOT SYSTEM RUNNING - MALE FORM')
