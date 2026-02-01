@@ -4,10 +4,31 @@ const bedrock = require('bedrock-protocol')
 /* ===== BOT TOKEN ===== */
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
+/* ===== FORCE SUB CHANNELS ===== */
+const CHANNELS = [
+  '@aternosbot24',
+  '@N_NHGER',
+  '@sjxhhdbx72',
+  '@vsyfyk'
+]
+
 /* ===== STORAGE ===== */
 const servers = {}   // uid => [{host, port}]
 const clients = {}   // uid => client
 const waiting = {}   // uid => true
+
+/* ===== CHECK SUB ===== */
+async function checkSub(ctx) {
+  for (const ch of CHANNELS) {
+    try {
+      const m = await ctx.telegram.getChatMember(ch, ctx.from.id)
+      if (m.status === 'left' || m.status === 'kicked') return false
+    } catch {
+      return false
+    }
+  }
+  return true
+}
 
 /* ===== MENU ===== */
 const mainMenu = () =>
@@ -26,12 +47,22 @@ async function safeEdit(ctx, text, keyboard) {
 }
 
 /* ===== START ===== */
-bot.start(ctx => {
+bot.start(async ctx => {
+  if (!(await checkSub(ctx))) {
+    return ctx.reply(
+      '🚫 اشترك بالقنوات ثم ارسل /start\n\n' +
+      'https://t.me/aternosbot24\n' +
+      'https://t.me/N_NHGER\n' +
+      'https://t.me/sjxhhdbx72\n' +
+      'https://t.me/vsyfyk'
+    )
+  }
   ctx.reply('🎮 لوحة تحكم بوت ماينكرافت بيدروك', mainMenu())
 })
 
 /* ===== ADD SERVER ===== */
 bot.action('ADD', async ctx => {
+  if (!(await checkSub(ctx))) return
   waiting[ctx.from.id] = true
   await safeEdit(ctx, '📡 أرسل السيرفر بهذا الشكل:\n`ip:port`', {
     parse_mode: 'Markdown'
@@ -42,10 +73,11 @@ bot.action('ADD', async ctx => {
 bot.on('text', async ctx => {
   const uid = ctx.from.id
   if (!waiting[uid]) return
+  if (!(await checkSub(ctx))) return
 
   const text = ctx.message.text.trim()
   if (!text.includes(':'))
-    return ctx.reply('❌ الصيغة غلط، مثال:\nplay.example.com:19132')
+    return ctx.reply('❌ الصيغة غلط\nمثال:\nplay.example.com:19132')
 
   const [host, port] = text.split(':')
 
@@ -58,6 +90,8 @@ bot.on('text', async ctx => {
 
 /* ===== LIST SERVERS ===== */
 bot.action('LIST', async ctx => {
+  if (!(await checkSub(ctx))) return
+
   const list = servers[ctx.from.id]
   if (!list || list.length === 0)
     return safeEdit(ctx, '📭 لا يوجد سيرفرات', mainMenu())
@@ -72,6 +106,8 @@ bot.action('LIST', async ctx => {
 
 /* ===== SERVER PANEL ===== */
 bot.action(/^SRV_(\d+)$/, async ctx => {
+  if (!(await checkSub(ctx))) return
+
   const uid = ctx.from.id
   const id = Number(ctx.match[1])
   const s = servers[uid][id]
@@ -90,6 +126,8 @@ bot.action(/^SRV_(\d+)$/, async ctx => {
 
 /* ===== DELETE SERVER ===== */
 bot.action(/^DEL_(\d+)$/, async ctx => {
+  if (!(await checkSub(ctx))) return
+
   const uid = ctx.from.id
   const id = Number(ctx.match[1])
 
@@ -99,6 +137,8 @@ bot.action(/^DEL_(\d+)$/, async ctx => {
 
 /* ===== TOGGLE BOT ===== */
 bot.action(/^TOGGLE_(\d+)$/, async ctx => {
+  if (!(await checkSub(ctx))) return
+
   const uid = ctx.from.id
   const s = servers[uid][ctx.match[1]]
 
@@ -116,7 +156,7 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
       port: Number(s.port),
       username: 'BedrockBot',
       offline: true,
-      version: 'auto' // يدعم 1.20 → 1.21.132
+      version: 'auto' // 1.20 → 1.21.132
     })
 
     clients[uid] = client
@@ -153,4 +193,4 @@ process.on('unhandledRejection', console.error)
 /* ===== LAUNCH ===== */
 bot.launch({ dropPendingUpdates: true })
 console.log('✅ BOT ONLINE')
-  
+    
