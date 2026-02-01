@@ -1,196 +1,136 @@
 const { Telegraf, Markup } = require('telegraf')
 const bedrock = require('bedrock-protocol')
+const http = require('http')
 
-/* ===== BOT TOKEN ===== */
+// توكن البوت
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
-/* ===== FORCE SUB CHANNELS ===== */
-const CHANNELS = [
-  '@aternosbot24',
-  '@N_NHGER',
-  '@sjxhhdbx72',
-  '@vsyfyk'
-]
+const CHANNELS = ['@aternosbot24', '@N_NHGER', '@sjxhhdbx72', '@vsyfyk']
+const servers = {}   
+const clients = {}   
+const waiting = {}   
 
-/* ===== STORAGE ===== */
-const servers = {}   // uid => [{host, port}]
-const clients = {}   // uid => client
-const waiting = {}   // uid => true
+// Keep Alive لمنع توقف الاستضافة
+http.createServer((req, res) => res.end('MAX BLACK IS ALIVE')).listen(process.env.PORT || 8080)
 
-/* ===== CHECK SUB ===== */
 async function checkSub(ctx) {
   for (const ch of CHANNELS) {
     try {
       const m = await ctx.telegram.getChatMember(ch, ctx.from.id)
-      if (m.status === 'left' || m.status === 'kicked') return false
-    } catch {
-      return false
-    }
+      if (['left', 'kicked'].includes(m.status)) return false
+    } catch { return false }
   }
   return true
 }
 
-/* ===== MENU ===== */
-const mainMenu = () =>
-  Markup.inlineKeyboard([
-    [Markup.button.callback('➕ إضافة سيرفر', 'ADD')],
-    [Markup.button.callback('📂 سيرفراتي', 'LIST')]
-  ])
+const mainMenu = () => Markup.inlineKeyboard([
+  [Markup.button.callback('➕ إضافة سيرفر', 'ADD')],
+  [Markup.button.callback('📂 سيرفراتي', 'LIST')]
+])
 
-/* ===== SAFE EDIT ===== */
 async function safeEdit(ctx, text, keyboard) {
-  try {
-    await ctx.editMessageText(text, keyboard)
-  } catch {
-    await ctx.reply(text, keyboard)
-  }
+  try { await ctx.editMessageText(text, keyboard) } 
+  catch { await ctx.reply(text, keyboard) }
 }
 
-/* ===== START ===== */
 bot.start(async ctx => {
   if (!(await checkSub(ctx))) {
-    return ctx.reply(
-      '🚫 اشترك بالقنوات ثم ارسل /start\n\n' +
-      'https://t.me/aternosbot24\n' +
-      'https://t.me/N_NHGER\n' +
-      'https://t.me/sjxhhdbx72\n' +
-      'https://t.me/vsyfyk'
-    )
+    return ctx.reply('🚫 اشترك بالقنوات أولاً لفتح اللوحة:\n' + CHANNELS.join('\n'))
   }
-  ctx.reply('🎮 لوحة تحكم بوت ماينكرافت بيدروك', mainMenu())
+  ctx.reply('🎮 أهلاً بك يا بطل في لوحة التحكم', mainMenu())
 })
 
-/* ===== ADD SERVER ===== */
 bot.action('ADD', async ctx => {
-  if (!(await checkSub(ctx))) return
   waiting[ctx.from.id] = true
-  await safeEdit(ctx, '📡 أرسل السيرفر بهذا الشكل:\n`ip:port`', {
-    parse_mode: 'Markdown'
-  })
+  await safeEdit(ctx, '📡 أرسل عنوان السيرفر بهذا الشكل:\n`ip:port`', { parse_mode: 'Markdown' })
 })
 
-/* ===== RECEIVE IP ===== */
 bot.on('text', async ctx => {
   const uid = ctx.from.id
   if (!waiting[uid]) return
-  if (!(await checkSub(ctx))) return
-
   const text = ctx.message.text.trim()
-  if (!text.includes(':'))
-    return ctx.reply('❌ الصيغة غلط\nمثال:\nplay.example.com:19132')
-
+  if (!text.includes(':')) return ctx.reply('❌ الصيغة خاطئة، مثال: `play.example.com:19132`', { parse_mode: 'Markdown' })
+  
   const [host, port] = text.split(':')
-
   servers[uid] ??= []
-  servers[uid].push({ host, port })
-
+  servers[uid].push({ host: host.trim(), port: port.trim() })
   delete waiting[uid]
-  ctx.reply('✅ تم حفظ السيرفر', mainMenu())
+  ctx.reply('✅ تم حفظ السيرفر بنجاح!', mainMenu())
 })
 
-/* ===== LIST SERVERS ===== */
 bot.action('LIST', async ctx => {
-  if (!(await checkSub(ctx))) return
-
   const list = servers[ctx.from.id]
-  if (!list || list.length === 0)
-    return safeEdit(ctx, '📭 لا يوجد سيرفرات', mainMenu())
-
-  const kb = list.map((s, i) => [
-    Markup.button.callback(`${s.host}:${s.port}`, `SRV_${i}`)
-  ])
+  if (!list || list.length === 0) return safeEdit(ctx, '📭 ليس لديك سيرفرات مضافة.', mainMenu())
+  const kb = list.map((s, i) => [Markup.button.callback(`📍 ${s.host}:${s.port}`, `SRV_${i}`)])
   kb.push([Markup.button.callback('⬅️ رجوع', 'BACK')])
-
-  await safeEdit(ctx, '📂 اختر سيرفر', Markup.inlineKeyboard(kb))
+  await safeEdit(ctx, '📂 اختر السيرفر المطلوب:', Markup.inlineKeyboard(kb))
 })
 
-/* ===== SERVER PANEL ===== */
 bot.action(/^SRV_(\d+)$/, async ctx => {
-  if (!(await checkSub(ctx))) return
-
   const uid = ctx.from.id
   const id = Number(ctx.match[1])
   const s = servers[uid][id]
   const online = !!clients[uid]
-
-  await safeEdit(
-    ctx,
-    `🖥 ${s.host}:${s.port}\nالحالة: ${online ? '🟢 يعمل' : '🔴 متوقف'}`,
+  await safeEdit(ctx, `🖥 السيرفر: ${s.host}:${s.port}\nالحالة: ${online ? '🟢 شغال' : '🔴 مطفأ'}`,
     Markup.inlineKeyboard([
-      [Markup.button.callback(online ? '⏹ إيقاف' : '▶️ تشغيل', `TOGGLE_${id}`)],
+      [Markup.button.callback(online ? '⏹ اطفاء البوت' : '▶️ تشغيل البوت', `TOGGLE_${id}`)],
       [Markup.button.callback('🗑 حذف السيرفر', `DEL_${id}`)],
       [Markup.button.callback('⬅️ رجوع', 'LIST')]
     ])
   )
 })
 
-/* ===== DELETE SERVER ===== */
-bot.action(/^DEL_(\d+)$/, async ctx => {
-  if (!(await checkSub(ctx))) return
-
-  const uid = ctx.from.id
-  const id = Number(ctx.match[1])
-
-  servers[uid].splice(id, 1)
-  await safeEdit(ctx, '🗑 تم حذف السيرفر', mainMenu())
-})
-
-/* ===== TOGGLE BOT ===== */
 bot.action(/^TOGGLE_(\d+)$/, async ctx => {
-  if (!(await checkSub(ctx))) return
-
   const uid = ctx.from.id
   const s = servers[uid][ctx.match[1]]
 
   if (clients[uid]) {
     clients[uid].disconnect()
     delete clients[uid]
-    return safeEdit(ctx, '⏹ تم إيقاف البوت', mainMenu())
+    return safeEdit(ctx, '🔴 تم إيقاف البوت وفصل الاتصال.', mainMenu())
   }
 
-  await safeEdit(ctx, '⏳ جاري الدخول للسيرفر...')
+  await safeEdit(ctx, '⏳ جاري محاولة الدخول...')
 
   try {
     const client = bedrock.createClient({
       host: s.host,
       port: Number(s.port),
-      username: 'BedrockBot',
+      username: 'Max_Black_Bot',
       offline: true,
-      version: 'auto' // 1.20 → 1.21.132
+      version: undefined // اكتشاف تلقائي للإصدار
     })
 
     clients[uid] = client
 
     client.on('spawn', () => {
-      safeEdit(ctx, '✅ دخل السيرفر بنجاح', mainMenu())
-    })
-
-    client.on('disconnect', () => {
-      delete clients[uid]
+      safeEdit(ctx, '✅ أبشر! دخل السيرفر وهو شغال الآن.', mainMenu())
+      
+      // نظام Anti-AFK (حركة صامتة كل 20 ثانية)
+      const moveInterval = setInterval(() => {
+        if (clients[uid]) {
+          client.setControlState('jump', true)
+          setTimeout(() => { if(clients[uid]) client.setControlState('jump', false) }, 1000)
+        } else { clearInterval(moveInterval) }
+      }, 20000)
     })
 
     client.on('error', err => {
-      console.log(err)
+      console.error(err)
       delete clients[uid]
-      safeEdit(ctx, '❌ خرج من السيرفر', mainMenu())
+      ctx.reply('❌ حدث خطأ أو خرج البوت من السيرفر.')
+    })
+
+    client.on('close', () => {
+      delete clients[uid]
     })
 
   } catch (e) {
-    console.log(e)
-    await safeEdit(ctx, '❌ فشل الاتصال', mainMenu())
+    await safeEdit(ctx, '❌ فشل الاتصال بالسيرفر.', mainMenu())
   }
 })
 
-/* ===== BACK ===== */
-bot.action('BACK', ctx => {
-  safeEdit(ctx, '🎮 لوحة تحكم بوت ماينكرافت', mainMenu())
-})
+bot.action('BACK', ctx => safeEdit(ctx, '🎮 لوحة التحكم:', mainMenu()))
 
-/* ===== SAFETY ===== */
-process.on('uncaughtException', console.error)
-process.on('unhandledRejection', console.error)
-
-/* ===== LAUNCH ===== */
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ BOT ONLINE')
-    
+console.log('✅ BOT RUNNING')
