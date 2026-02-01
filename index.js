@@ -1,14 +1,27 @@
 const { Telegraf, Markup } = require('telegraf')
 const bedrock = require('bedrock-protocol')
+const fs = require('fs') // مكتبة التعامل مع الملفات
 
 /* ===== BOT TOKEN ===== */
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
-/* ===== FORCE SUB CHANNELS ===== */
-const CHANNELS = ['@aternosbot24', '@N_NHGER', '@sjxhhdbx72', '@vsyfyk']
+/* ===== STORAGE (نظام الحفظ الدائم) ===== */
+let servers = {}
+// محاولة تحميل البيانات المحفوظة من الملف عند تشغيل البوت
+if (fs.existsSync('servers.json')) {
+    try {
+        servers = JSON.parse(fs.readFileSync('servers.json'))
+    } catch (e) {
+        servers = {}
+    }
+}
 
-/* ===== STORAGE ===== */
-const servers = {}   
+// وظيفة لحفظ أي تغيير (إضافة أو حذف) في الملف
+const saveDB = () => {
+    fs.writeFileSync('servers.json', JSON.stringify(servers, null, 2))
+}
+
+const CHANNELS = ['@aternosbot24', '@N_NHGER', '@sjxhhdbx72', '@vsyfyk']
 const clients = {}   
 const waiting = {}   
 
@@ -32,14 +45,10 @@ const mainMenu = () =>
 
 /* ===== SAFE EDIT ===== */
 async function safeEdit(ctx, text, keyboard) {
-  try {
-    await ctx.editMessageText(text, keyboard)
-  } catch {
-    await ctx.reply(text, keyboard)
-  }
+  try { await ctx.editMessageText(text, keyboard) } 
+  catch { await ctx.reply(text, keyboard) }
 }
 
-/* ===== START ===== */
 bot.start(async ctx => {
   if (!(await checkSub(ctx))) {
     return ctx.reply('🚫 اشترك بالقنوات أولاً ثم أرسل /start:\n' + CHANNELS.join('\n'))
@@ -47,14 +56,12 @@ bot.start(async ctx => {
   ctx.reply('🎮 أهلاً بك يا بطل في لوحة التحكم', mainMenu())
 })
 
-/* ===== ADD SERVER ===== */
 bot.action('ADD', async ctx => {
   waiting[ctx.from.id] = true
   await ctx.answerCbQuery()
   await safeEdit(ctx, '📡 أرسل السيرفر بهذا الشكل:\n`ip:port`', { parse_mode: 'Markdown' })
 })
 
-/* ===== RECEIVE IP (تم إصلاح سرعة الرد هنا) ===== */
 bot.on('text', async ctx => {
   const uid = ctx.from.id
   if (!waiting[uid]) return
@@ -66,11 +73,11 @@ bot.on('text', async ctx => {
   servers[uid] ??= []
   servers[uid].push({ host: host.trim(), port: port.trim() })
 
+  saveDB() // حفظ البيانات في الملف فور الإضافة
   delete waiting[uid]
-  ctx.reply('✅ تم حفظ السيرفر بنجاح!', mainMenu())
+  ctx.reply('✅ تم حفظ السيرفر بنجاح ولن يُحذف أبداً!', mainMenu())
 })
 
-/* ===== LIST SERVERS ===== */
 bot.action('LIST', async ctx => {
   const list = servers[ctx.from.id]
   if (!list || list.length === 0) return safeEdit(ctx, '📭 لا يوجد سيرفرات مضافة.', mainMenu())
@@ -80,7 +87,6 @@ bot.action('LIST', async ctx => {
   await safeEdit(ctx, '📂 اختر السيرفر المطلوب:', Markup.inlineKeyboard(kb))
 })
 
-/* ===== SERVER PANEL ===== */
 bot.action(/^SRV_(\d+)$/, async ctx => {
   const uid = ctx.from.id
   const id = Number(ctx.match[1])
@@ -96,19 +102,18 @@ bot.action(/^SRV_(\d+)$/, async ctx => {
   )
 })
 
-/* ===== DELETE SERVER (تم الإصلاح الجذري هنا) ===== */
 bot.action(/^DEL_(\d+)$/, async ctx => {
   const uid = ctx.from.id
   const id = Number(ctx.match[1])
 
   if (servers[uid] && servers[uid][id]) {
     servers[uid].splice(id, 1)
+    saveDB() // تحديث الملف بعد الحذف
     await ctx.answerCbQuery('🗑 تم الحذف بنجاح')
     await safeEdit(ctx, '✅ تم حذف السيرفر من قائمتك.', mainMenu())
   }
 })
 
-/* ===== TOGGLE BOT ===== */
 bot.action(/^TOGGLE_(\d+)$/, async ctx => {
   const uid = ctx.from.id
   const id = ctx.match[1]
@@ -131,15 +136,15 @@ bot.action(/^TOGGLE_(\d+)$/, async ctx => {
     })
     clients[uid] = client
     client.on('spawn', () => { safeEdit(ctx, '✅ البوت دخل السيرفر وهو شغال الآن.', mainMenu()) })
-    client.on('error', () => { delete clients[uid]; safeEdit(ctx, '❌ فشل الاتصال أو خرج البوت.', mainMenu()) })
+    client.on('error', () => { delete clients[uid]; safeEdit(ctx, '❌ فشل الاتصال.', mainMenu()) })
     client.on('close', () => { delete clients[uid] })
   } catch (e) {
     await safeEdit(ctx, '❌ خطأ في النظام.', mainMenu())
   }
 })
 
-/* ===== BACK ===== */
 bot.action('BACK', ctx => { safeEdit(ctx, '🎮 لوحة التحكم:', mainMenu()) })
 
 bot.launch({ dropPendingUpdates: true })
-console.log('✅ BOT IS FIXED AND RUNNING')
+console.log('✅ BOT IS PERMANENTLY SAVING SERVERS NOW')
+      
